@@ -720,12 +720,15 @@ def main():
                 - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
                 
-                # Enhanced Strategy Analysis
-                st.subheader("Detailed Performance Analysis")
+                # NEW ENHANCED STRATEGY ANALYSIS SECTION
+                st.subheader("Enhanced Strategy Analysis")
                 
                 # Calculate monthly and yearly returns
                 strategy_returns_series = performance_data['strategy_returns']
                 buyhold_returns_series = performance_data['buyhold_returns']
+                
+                # **1. Monthly & Yearly Performance**
+                st.markdown("### 1. Monthly & Yearly Performance")
                 
                 # Monthly analysis
                 strategy_monthly = strategy_returns_series.resample('M').apply(lambda x: (1 + x).prod() - 1) * 100
@@ -739,7 +742,7 @@ def main():
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.subheader("Monthly Returns Comparison")
+                    st.markdown("**Monthly Returns Chart**")
                     if PLOTLY_AVAILABLE and len(strategy_monthly) > 0:
                         fig_monthly = go.Figure()
                         
@@ -762,7 +765,7 @@ def main():
                         ))
                         
                         fig_monthly.update_layout(
-                            title="Monthly Returns (%)",
+                            title="Monthly Returns Comparison (%)",
                             xaxis_title="Month",
                             yaxis_title="Return (%)",
                             height=400,
@@ -778,7 +781,7 @@ def main():
                         st.line_chart(monthly_df)
                 
                 with col2:
-                    st.subheader("Yearly Returns Comparison")
+                    st.markdown("**Yearly Returns Table**")
                     if len(strategy_yearly) > 0:
                         yearly_df = pd.DataFrame({
                             'Year': strategy_yearly.index.year,
@@ -791,33 +794,16 @@ def main():
                     else:
                         st.info("Insufficient data for yearly analysis")
                 
-                # Advanced metrics
+                # **2. Advanced Risk Analysis**
+                st.markdown("### 2. Advanced Risk Analysis")
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.subheader("Risk Analysis")
+                    st.markdown("**Risk Metrics**")
                     
                     # Calculate additional risk metrics
                     strategy_returns_active = strategy_returns_series[performance_data['strategy_positions'] == 1]
-                    
-                    # Calculate consecutive wins/losses
-                    strategy_daily_pnl = strategy_returns_series != 0
-                    strategy_wins = strategy_returns_series > 0
-                    
-                    # Winning/losing streaks
-                    def calculate_streaks(series):
-                        if len(series) == 0:
-                            return 0, 0
-                        streaks = []
-                        current_streak = 1
-                        for i in range(1, len(series)):
-                            if series.iloc[i] == series.iloc[i-1]:
-                                current_streak += 1
-                            else:
-                                streaks.append(current_streak)
-                                current_streak = 1
-                        streaks.append(current_streak)
-                        return max(streaks) if streaks else 0, streaks
                     
                     # Best/worst months
                     best_month_strategy = strategy_monthly.max() if len(strategy_monthly) > 0 else 0
@@ -835,6 +821,10 @@ def main():
                     sortino_strategy = (strategy_metrics['annualized_return'] - 2) / (downside_std_strategy * 100) if downside_std_strategy > 0 else 0
                     sortino_buyhold = (buyhold_metrics['annualized_return'] - 2) / (downside_std_buyhold * 100) if downside_std_buyhold > 0 else 0
                     
+                    # Calmar ratio
+                    calmar_strategy = strategy_metrics['annualized_return'] / abs(strategy_metrics['max_drawdown']) if strategy_metrics['max_drawdown'] != 0 else float('inf')
+                    calmar_buyhold = buyhold_metrics['annualized_return'] / abs(buyhold_metrics['max_drawdown']) if buyhold_metrics['max_drawdown'] != 0 else float('inf')
+                    
                     risk_df = pd.DataFrame({
                         'Metric': ['Best Month (%)', 'Worst Month (%)', 'Sortino Ratio', 'Positive Months', 'Calmar Ratio'],
                         'Strategy': [
@@ -842,20 +832,41 @@ def main():
                             f"{worst_month_strategy:.1f}",
                             f"{sortino_strategy:.2f}",
                             f"{(strategy_monthly > 0).sum()}/{len(strategy_monthly)}",
-                            f"{strategy_metrics['annualized_return'] / abs(strategy_metrics['max_drawdown']):.2f}" if strategy_metrics['max_drawdown'] != 0 else "N/A"
+                            f"{calmar_strategy:.2f}" if not np.isinf(calmar_strategy) else "N/A"
                         ],
                         'Buy & Hold': [
                             f"{best_month_buyhold:.1f}",
                             f"{worst_month_buyhold:.1f}",
                             f"{sortino_buyhold:.2f}",
                             f"{(buyhold_monthly > 0).sum()}/{len(buyhold_monthly)}",
-                            f"{buyhold_metrics['annualized_return'] / abs(buyhold_metrics['max_drawdown']):.2f}" if buyhold_metrics['max_drawdown'] != 0 else "N/A"
+                            f"{calmar_buyhold:.2f}" if not np.isinf(calmar_buyhold) else "N/A"
                         ]
                     })
                     st.dataframe(risk_df, use_container_width=True, hide_index=True)
                 
                 with col2:
-                    st.subheader("Trading Statistics")
+                    st.markdown("**Risk Analysis Summary**")
+                    st.markdown(f"""
+                    **Best Month**: Strategy peaked at **{best_month_strategy:.1f}%** vs Buy & Hold **{best_month_buyhold:.1f}%**
+                    
+                    **Worst Month**: Strategy bottomed at **{worst_month_strategy:.1f}%** vs Buy & Hold **{worst_month_buyhold:.1f}%**
+                    
+                    **Sortino Ratio**: Measures risk-adjusted returns using only downside deviation:
+                    - Strategy: **{sortino_strategy:.2f}**
+                    - Buy & Hold: **{sortino_buyhold:.2f}**
+                    
+                    **Calmar Ratio**: Annual return divided by max drawdown:
+                    - Strategy: **{calmar_strategy:.2f if not np.isinf(calmar_strategy) else 'N/A'}**
+                    - Buy & Hold: **{calmar_buyhold:.2f if not np.isinf(calmar_buyhold) else 'N/A'}**
+                    """)
+                
+                # **3. Detailed Trading Statistics**
+                st.markdown("### 3. Detailed Trading Statistics")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Position Analysis**")
                     
                     # Position analysis
                     total_positions = len(performance_data['strategy_positions'])
@@ -877,9 +888,8 @@ def main():
                     avg_negative_return = long_returns[long_returns < 0].mean() * 100 if len(long_returns[long_returns < 0]) > 0 else 0
                     
                     trading_df = pd.DataFrame({
-                        'Metric': ['Total Positions', 'Long Days', 'Flat Days', 'Position Changes', 
-                                  'Avg Position Length', 'Positive Long Days', 'Negative Long Days',
-                                  'Avg Daily Return (Long)', 'Avg Win Size', 'Avg Loss Size'],
+                        'Metric': ['Total Days', 'Long Days', 'Flat Days', 'Position Changes', 
+                                  'Avg Position Length', 'Positive Long Days', 'Negative Long Days'],
                         'Value': [
                             f"{total_positions}",
                             f"{long_positions}",
@@ -887,17 +897,32 @@ def main():
                             f"{position_changes}",
                             f"{avg_position_length:.1f} days",
                             f"{positive_long_days}",
-                            f"{negative_long_days}",
-                            f"{avg_long_return:.2f}%",
-                            f"{avg_positive_return:.2f}%",
-                            f"{avg_negative_return:.2f}%"
+                            f"{negative_long_days}"
                         ]
                     })
                     st.dataframe(trading_df, use_container_width=True, hide_index=True)
                 
-                # Monthly heatmap
+                with col2:
+                    st.markdown("**Win/Loss Analysis**")
+                    
+                    returns_df = pd.DataFrame({
+                        'Metric': ['Avg Daily Return (Long)', 'Avg Win Size', 'Avg Loss Size', 
+                                  'Win Rate (Long Days)', 'Profit Factor', 'Largest Win', 'Largest Loss'],
+                        'Value': [
+                            f"{avg_long_return:.3f}%",
+                            f"{avg_positive_return:.3f}%",
+                            f"{avg_negative_return:.3f}%",
+                            f"{positive_long_days/(positive_long_days + negative_long_days)*100:.1f}%" if (positive_long_days + negative_long_days) > 0 else "0%",
+                            f"{abs(avg_positive_return/avg_negative_return):.2f}" if avg_negative_return != 0 else "N/A",
+                            f"{long_returns.max()*100:.2f}%" if len(long_returns) > 0 else "0%",
+                            f"{long_returns.min()*100:.2f}%" if len(long_returns) > 0 else "0%"
+                        ]
+                    })
+                    st.dataframe(returns_df, use_container_width=True, hide_index=True)
+                
+                # **4. Monthly Heatmap**
                 if len(strategy_monthly) > 12:  # Only show if we have enough data
-                    st.subheader("Monthly Returns Heatmap")
+                    st.markdown("### 4. Monthly Performance Heatmap")
                     
                     # Prepare data for heatmap
                     monthly_data = pd.DataFrame({
@@ -931,25 +956,47 @@ def main():
                         )
                         
                         st.plotly_chart(fig_heatmap, use_container_width=True)
+                        
+                        st.markdown("""
+                        **Heatmap Legend:**
+                        - **Green**: Strategy outperformed Buy & Hold that month
+                        - **Red**: Strategy underperformed Buy & Hold that month
+                        - **Pattern Recognition**: Look for seasonal trends or performance clusters
+                        """)
                     else:
                         st.dataframe(heatmap_data.round(1), use_container_width=True)
+                        st.info("Install plotly for interactive heatmap visualization")
                 
-                # Technical implementation note
-                st.info("""
-                **Strategy Implementation Notes:**
+                # **5. Advanced Metrics Summary**
+                st.markdown("### 5. Advanced Metrics Summary")
                 
-                **Combined Filters Applied**:
-                - **Quadrant Filter**: Long only in Q1 (Goldilocks) and Q3 (Stagflation)
-                - **50 EMA Filter**: Long only when BTC price is above 50-day EMA
-                - **Both Required**: Must satisfy BOTH conditions to be long
+                col1, col2 = st.columns(2)
                 
-                **Signal Lag Applied**: This backtest uses **1-day lagged signals** to avoid look-ahead bias:
-                - **Day T-1**: Calculate quadrant and 50 EMA using data through T-1
-                - **Day T**: Apply combined signal to Day T's trading (realistic implementation)
-                - **No Cheating**: We never use "today's" price to make "today's" trading decision
+                with col1:
+                    st.markdown("**Enhanced Risk Measures**")
+                    st.markdown(f"""
+                    **Sortino Ratio**: {sortino_strategy:.2f} vs {sortino_buyhold:.2f}
+                    - Better than Sharpe as it only penalizes downside volatility
+                    - Higher is better (strategy {'outperforms' if sortino_strategy > sortino_buyhold else 'underperforms'})
+                    
+                    **Calmar Ratio**: {calmar_strategy:.2f if not np.isinf(calmar_strategy) else 'Excellent'} vs {calmar_buyhold:.2f if not np.isinf(calmar_buyhold) else 'Excellent'}
+                    - Measures return per unit of maximum drawdown
+                    - Strategy provides {'better' if calmar_strategy > calmar_buyhold else 'similar'} risk-adjusted returns
+                    """)
                 
-                **Real Trading**: In practice, you'd calculate both signals at market close and apply the position the next day.
-                """)
+                with col2:
+                    st.markdown("**Trading Efficiency**")
+                    profit_factor = abs(avg_positive_return/avg_negative_return) if avg_negative_return != 0 else float('inf')
+                    st.markdown(f"""
+                    **Position Statistics**:
+                    - **Position Changes**: {position_changes} switches over {total_positions} days
+                    - **Average Hold Time**: {avg_position_length:.1f} days per position
+                    - **Time in Market**: {performance_data['time_in_market']:.1f}% (vs 100% for Buy & Hold)
+                    
+                    **Win/Loss Analysis**:
+                    - **Profit Factor**: {profit_factor:.2f if not np.isinf(profit_factor) else 'Excellent'} (avg win / avg loss)
+                    - **Win Rate**: {positive_long_days/(positive_long_days + negative_long_days)*100:.1f}% on active days
+                    """)
                 
             else:
                 st.error("Failed to calculate strategy performance.")
