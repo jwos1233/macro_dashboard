@@ -57,7 +57,6 @@ class CurrentQuadrantAnalysis:
         self.core_assets = {
             'QQQ': 'NASDAQ 100 (Growth)', 'VUG': 'Vanguard Growth ETF',
             'IWM': 'Russell 2000 (Small Caps)', 'BTC-USD': 'Bitcoin (BTC)',
-            'ETH-USD': 'Ethereum (ETH)',
             'XLE': 'Energy Sector ETF', 'DBC': 'Broad Commodities ETF',
             'GLD': 'Gold ETF', 'LIT': 'Lithium & Battery Tech ETF',
             'TLT': '20+ Year Treasury Bonds', 'XLU': 'Utilities Sector ETF',
@@ -67,8 +66,7 @@ class CurrentQuadrantAnalysis:
     def _initialize_asset_classifications(self) -> Dict[str, AssetClassification]:
         classifications = {}
         q1_assets = [('QQQ', 'NASDAQ 100 (Growth)', 'Q1'), ('VUG', 'Vanguard Growth ETF', 'Q1'),
-                     ('IWM', 'Russell 2000 (Small Caps)', 'Q1'), ('BTC-USD', 'Bitcoin (BTC)', 'Q1'),
-                     ('ETH-USD', 'Ethereum (ETH)', 'Q1')]
+                     ('IWM', 'Russell 2000 (Small Caps)', 'Q1'), ('BTC-USD', 'Bitcoin (BTC)', 'Q1')]
         q2_assets = [('XLE', 'Energy Sector ETF', 'Q2'), ('DBC', 'Broad Commodities ETF', 'Q2')]
         q3_assets = [('GLD', 'Gold ETF', 'Q3'), ('LIT', 'Lithium & Battery Tech ETF', 'Q3')]
         q4_assets = [('TLT', '20+ Year Treasury Bonds', 'Q4'), ('XLU', 'Utilities Sector ETF', 'Q4'),
@@ -177,22 +175,21 @@ class StrategyPerformanceAnalysis:
         self.strategy_name = "Quadrant Strategy"
         self.benchmark_name = "Buy & Hold"
     
-    def calculate_strategy_performance(self, price_data: pd.DataFrame, daily_results: pd.DataFrame, crypto_symbol: str = 'BTC-USD') -> Dict:
+    def calculate_strategy_performance(self, price_data: pd.DataFrame, daily_results: pd.DataFrame) -> Dict:
         """Calculate performance metrics for quadrant strategy vs buy & hold"""
         
-        if price_data is None or crypto_symbol not in price_data.columns or daily_results is None:
+        if price_data is None or 'BTC-USD' not in price_data.columns or daily_results is None:
             return None
         
         try:
             # Align price data with quadrant data
-            crypto_prices = price_data[crypto_symbol].copy()
-            crypto_name = "Bitcoin" if crypto_symbol == 'BTC-USD' else "Ethereum"
+            btc_prices = price_data['BTC-USD'].copy()
             
             # Calculate 50 EMA
-            crypto_50ema = crypto_prices.rolling(window=50).mean()
+            btc_50ema = btc_prices.rolling(window=50).mean()
             
             # Forward fill quadrant data to match price data length
-            aligned_quadrants = pd.Series('Q2', index=crypto_prices.index)
+            aligned_quadrants = pd.Series('Q2', index=btc_prices.index)
             for date in daily_results.index:
                 if date in aligned_quadrants.index:
                     aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
@@ -203,19 +200,19 @@ class StrategyPerformanceAnalysis:
             # CRITICAL FIX: Apply 1-day lag to avoid look-ahead bias
             # Shift quadrant signals forward by 1 day (lag the signal)
             lagged_quadrants = aligned_quadrants.shift(1).fillna('Q2')
-            lagged_50ema = crypto_50ema.shift(1).fillna(crypto_prices.iloc[0])  # Lag EMA as well
+            lagged_50ema = btc_50ema.shift(1).fillna(btc_prices.iloc[0])  # Lag EMA as well
             
             # Calculate daily returns
-            crypto_returns = crypto_prices.pct_change().fillna(0)
+            btc_returns = btc_prices.pct_change().fillna(0)
             
             # Strategy: Long in Q1+Q3 AND above 50 EMA, Flat otherwise (using lagged signals)
             favorable_quadrant = lagged_quadrants.isin(['Q1', 'Q3'])
-            above_ema = crypto_prices > lagged_50ema  # Current price vs lagged EMA
+            above_ema = btc_prices > lagged_50ema  # Current price vs lagged EMA
             strategy_positions = (favorable_quadrant & above_ema).astype(int)
-            strategy_returns = crypto_returns * strategy_positions
+            strategy_returns = btc_returns * strategy_positions
             
             # Buy & Hold returns
-            buyhold_returns = crypto_returns
+            buyhold_returns = btc_returns
             
             # Calculate cumulative performance
             strategy_cumulative = (1 + strategy_returns).cumprod()
@@ -283,10 +280,8 @@ class StrategyPerformanceAnalysis:
                 'time_in_market': time_in_market,
                 'long_days': long_days,
                 'flat_days': flat_days,
-                'crypto_prices': crypto_prices,
-                'crypto_50ema': lagged_50ema,
-                'crypto_symbol': crypto_symbol,
-                'crypto_name': crypto_name,
+                'btc_prices': btc_prices,
+                'btc_50ema': lagged_50ema,
                 'quadrant_only_days': quadrant_only_days,
                 'ema_filter_reduction': ema_filter_reduction,
                 'signal_lag_applied': True,
@@ -342,22 +337,21 @@ class StrategyPerformanceAnalysis:
         
         st.plotly_chart(fig_performance, use_container_width=True)
         
-        # Chart 2: Strategy Positions & Crypto Price
+        # Chart 2: Strategy Positions & BTC Price
         fig_positions = go.Figure()
         
-        # Crypto Price (secondary y-axis)
-        crypto_name = performance_data['crypto_name']
+        # BTC Price (secondary y-axis)
         fig_positions.add_trace(go.Scatter(
-            x=performance_data['crypto_prices'].index,
-            y=performance_data['crypto_prices'].values,
+            x=performance_data['btc_prices'].index,
+            y=performance_data['btc_prices'].values,
             mode='lines',
-            name=f'{crypto_name} Price',
+            name='BTC Price',
             line=dict(color='orange', width=1),
             yaxis='y2'
         ))
         
         # Strategy positions
-        positions_for_plot = performance_data['strategy_positions'] * performance_data['crypto_prices'].max() * 0.1
+        positions_for_plot = performance_data['strategy_positions'] * performance_data['btc_prices'].max() * 0.1
         fig_positions.add_trace(go.Scatter(
             x=performance_data['strategy_positions'].index,
             y=positions_for_plot.values,
@@ -369,10 +363,10 @@ class StrategyPerformanceAnalysis:
         ))
         
         fig_positions.update_layout(
-            title=f"Strategy Positions vs {crypto_name} Price",
+            title="Strategy Positions vs BTC Price",
             xaxis_title="Date",
             yaxis=dict(title="Position Signal", side="left"),
-            yaxis2=dict(title=f"{crypto_name} Price (USD)", side="right", overlaying="y"),
+            yaxis2=dict(title="BTC Price (USD)", side="right", overlaying="y"),
             height=400,
             legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
         )
@@ -634,31 +628,14 @@ def main():
             st.error("Strategy Performance Analysis requires yfinance.")
             return
         
-        # Add crypto selection toggle
-        st.sidebar.markdown("### Crypto Selection")
-        crypto_choice = st.sidebar.radio(
-            "Select Cryptocurrency",
-            ("Bitcoin (BTC)", "Ethereum (ETH)"),
-            help="Choose which cryptocurrency to analyze with the quadrant strategy"
-        )
-        
-        # Map choice to symbol
-        crypto_symbol = 'BTC-USD' if crypto_choice == "Bitcoin (BTC)" else 'ETH-USD'
-        crypto_name = "Bitcoin" if crypto_choice == "Bitcoin (BTC)" else "Ethereum"
-        
         # Load data
         with st.spinner("Loading strategy performance data..."):
             price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
         
         if daily_results is not None and price_data is not None:
-            # Check if selected crypto is available
-            if crypto_symbol not in price_data.columns:
-                st.error(f"{crypto_name} data not available in the dataset. Please try Bitcoin instead.")
-                return
-                
             # Calculate strategy performance
             strategy_analyzer = StrategyPerformanceAnalysis()
-            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results, crypto_symbol)
+            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results)
             
             if performance_data:
                 strategy_metrics = performance_data['strategy_metrics']
@@ -670,26 +647,22 @@ def main():
                 with col1:
                     st.metric("Strategy Total Return", 
                              f"{strategy_metrics['total_return']:.1f}%",
-                             delta=f"{strategy_metrics['total_return'] - buyhold_metrics['total_return']:.1f}% vs B&H",
-                             help=f"Total return of quadrant strategy on {crypto_name} vs buy & hold")
+                             delta=f"{strategy_metrics['total_return'] - buyhold_metrics['total_return']:.1f}% vs B&H")
                 
                 with col2:
                     st.metric("Sharpe Ratio", 
                              f"{strategy_metrics['sharpe_ratio']:.2f}",
-                             delta=f"{strategy_metrics['sharpe_ratio'] - buyhold_metrics['sharpe_ratio']:.2f}",
-                             help="Risk-adjusted return (higher is better)")
+                             delta=f"{strategy_metrics['sharpe_ratio'] - buyhold_metrics['sharpe_ratio']:.2f}")
                 
                 with col3:
                     st.metric("Max Drawdown", 
                              f"{strategy_metrics['max_drawdown']:.1f}%",
-                             delta=f"{strategy_metrics['max_drawdown'] - buyhold_metrics['max_drawdown']:.1f}%",
-                             help="Worst peak-to-trough decline (lower is better)")
+                             delta=f"{strategy_metrics['max_drawdown'] - buyhold_metrics['max_drawdown']:.1f}%")
                 
                 with col4:
                     st.metric("Time in Market", 
                              f"{performance_data['time_in_market']:.1f}%",
-                             delta=f"EMA Filter: -{performance_data['ema_filter_reduction']:.1f}%",
-                             help="Percentage of time the strategy was long vs flat")
+                             delta=f"EMA Filter: -{performance_data['ema_filter_reduction']:.1f}%")
                 
                 # Performance charts
                 strategy_analyzer.create_performance_charts(performance_data)
