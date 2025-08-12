@@ -632,10 +632,11 @@ def main():
             padding: 1rem; border-radius: 10px; color: white;
             text-align: center; margin: 0.5rem 0;
         }
+    # Custom CSS styling
     st.markdown("""
     <style>
         .main-header {
-            font-size: 2.5rem; 
+            font-size: 2rem; 
             font-weight: bold; 
             color: #1E88E5;
             text-align: center; 
