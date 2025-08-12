@@ -720,6 +720,220 @@ def main():
                 - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
                 
+                # Enhanced Strategy Analysis
+                st.subheader("Detailed Performance Analysis")
+                
+                # Calculate monthly and yearly returns
+                strategy_returns_series = performance_data['strategy_returns']
+                buyhold_returns_series = performance_data['buyhold_returns']
+                
+                # Monthly analysis
+                strategy_monthly = strategy_returns_series.resample('M').apply(lambda x: (1 + x).prod() - 1) * 100
+                buyhold_monthly = buyhold_returns_series.resample('M').apply(lambda x: (1 + x).prod() - 1) * 100
+                
+                # Yearly analysis
+                strategy_yearly = strategy_returns_series.resample('Y').apply(lambda x: (1 + x).prod() - 1) * 100
+                buyhold_yearly = buyhold_returns_series.resample('Y').apply(lambda x: (1 + x).prod() - 1) * 100
+                
+                # Monthly performance chart
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Monthly Returns Comparison")
+                    if PLOTLY_AVAILABLE and len(strategy_monthly) > 0:
+                        fig_monthly = go.Figure()
+                        
+                        fig_monthly.add_trace(go.Scatter(
+                            x=strategy_monthly.index,
+                            y=strategy_monthly.values,
+                            mode='lines+markers',
+                            name='Strategy',
+                            line=dict(color='#00ff00', width=2),
+                            marker=dict(size=4)
+                        ))
+                        
+                        fig_monthly.add_trace(go.Scatter(
+                            x=buyhold_monthly.index,
+                            y=buyhold_monthly.values,
+                            mode='lines+markers',
+                            name='Buy & Hold',
+                            line=dict(color='#1f77b4', width=2),
+                            marker=dict(size=4)
+                        ))
+                        
+                        fig_monthly.update_layout(
+                            title="Monthly Returns (%)",
+                            xaxis_title="Month",
+                            yaxis_title="Return (%)",
+                            height=400,
+                            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+                        )
+                        
+                        st.plotly_chart(fig_monthly, use_container_width=True)
+                    else:
+                        monthly_df = pd.DataFrame({
+                            'Strategy': strategy_monthly.values,
+                            'Buy & Hold': buyhold_monthly.values
+                        }, index=strategy_monthly.index)
+                        st.line_chart(monthly_df)
+                
+                with col2:
+                    st.subheader("Yearly Returns Comparison")
+                    if len(strategy_yearly) > 0:
+                        yearly_df = pd.DataFrame({
+                            'Year': strategy_yearly.index.year,
+                            'Strategy (%)': strategy_yearly.values.round(1),
+                            'Buy & Hold (%)': buyhold_yearly.values.round(1),
+                            'Outperformance (%)': (strategy_yearly.values - buyhold_yearly.values).round(1)
+                        })
+                        yearly_df = yearly_df.set_index('Year')
+                        st.dataframe(yearly_df, use_container_width=True)
+                    else:
+                        st.info("Insufficient data for yearly analysis")
+                
+                # Advanced metrics
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Risk Analysis")
+                    
+                    # Calculate additional risk metrics
+                    strategy_returns_active = strategy_returns_series[performance_data['strategy_positions'] == 1]
+                    
+                    # Calculate consecutive wins/losses
+                    strategy_daily_pnl = strategy_returns_series != 0
+                    strategy_wins = strategy_returns_series > 0
+                    
+                    # Winning/losing streaks
+                    def calculate_streaks(series):
+                        if len(series) == 0:
+                            return 0, 0
+                        streaks = []
+                        current_streak = 1
+                        for i in range(1, len(series)):
+                            if series.iloc[i] == series.iloc[i-1]:
+                                current_streak += 1
+                            else:
+                                streaks.append(current_streak)
+                                current_streak = 1
+                        streaks.append(current_streak)
+                        return max(streaks) if streaks else 0, streaks
+                    
+                    # Best/worst months
+                    best_month_strategy = strategy_monthly.max() if len(strategy_monthly) > 0 else 0
+                    worst_month_strategy = strategy_monthly.min() if len(strategy_monthly) > 0 else 0
+                    best_month_buyhold = buyhold_monthly.max() if len(buyhold_monthly) > 0 else 0
+                    worst_month_buyhold = buyhold_monthly.min() if len(buyhold_monthly) > 0 else 0
+                    
+                    # Calculate Sortino ratio (downside deviation)
+                    downside_returns_strategy = strategy_returns_series[strategy_returns_series < 0]
+                    downside_returns_buyhold = buyhold_returns_series[buyhold_returns_series < 0]
+                    
+                    downside_std_strategy = downside_returns_strategy.std() * np.sqrt(252) if len(downside_returns_strategy) > 0 else 0
+                    downside_std_buyhold = downside_returns_buyhold.std() * np.sqrt(252) if len(downside_returns_buyhold) > 0 else 0
+                    
+                    sortino_strategy = (strategy_metrics['annualized_return'] - 2) / (downside_std_strategy * 100) if downside_std_strategy > 0 else 0
+                    sortino_buyhold = (buyhold_metrics['annualized_return'] - 2) / (downside_std_buyhold * 100) if downside_std_buyhold > 0 else 0
+                    
+                    risk_df = pd.DataFrame({
+                        'Metric': ['Best Month (%)', 'Worst Month (%)', 'Sortino Ratio', 'Positive Months', 'Calmar Ratio'],
+                        'Strategy': [
+                            f"{best_month_strategy:.1f}",
+                            f"{worst_month_strategy:.1f}",
+                            f"{sortino_strategy:.2f}",
+                            f"{(strategy_monthly > 0).sum()}/{len(strategy_monthly)}",
+                            f"{strategy_metrics['annualized_return'] / abs(strategy_metrics['max_drawdown']):.2f}" if strategy_metrics['max_drawdown'] != 0 else "N/A"
+                        ],
+                        'Buy & Hold': [
+                            f"{best_month_buyhold:.1f}",
+                            f"{worst_month_buyhold:.1f}",
+                            f"{sortino_buyhold:.2f}",
+                            f"{(buyhold_monthly > 0).sum()}/{len(buyhold_monthly)}",
+                            f"{buyhold_metrics['annualized_return'] / abs(buyhold_metrics['max_drawdown']):.2f}" if buyhold_metrics['max_drawdown'] != 0 else "N/A"
+                        ]
+                    })
+                    st.dataframe(risk_df, use_container_width=True, hide_index=True)
+                
+                with col2:
+                    st.subheader("Trading Statistics")
+                    
+                    # Position analysis
+                    total_positions = len(performance_data['strategy_positions'])
+                    long_positions = performance_data['strategy_positions'].sum()
+                    flat_positions = total_positions - long_positions
+                    
+                    # Calculate position changes (strategy switches)
+                    position_changes = (performance_data['strategy_positions'].diff() != 0).sum()
+                    avg_position_length = long_positions / position_changes if position_changes > 0 else 0
+                    
+                    # Strategy returns when long
+                    long_returns = strategy_returns_series[performance_data['strategy_positions'] == 1]
+                    positive_long_days = (long_returns > 0).sum() if len(long_returns) > 0 else 0
+                    negative_long_days = (long_returns < 0).sum() if len(long_returns) > 0 else 0
+                    
+                    # Average returns
+                    avg_long_return = long_returns.mean() * 100 if len(long_returns) > 0 else 0
+                    avg_positive_return = long_returns[long_returns > 0].mean() * 100 if len(long_returns[long_returns > 0]) > 0 else 0
+                    avg_negative_return = long_returns[long_returns < 0].mean() * 100 if len(long_returns[long_returns < 0]) > 0 else 0
+                    
+                    trading_df = pd.DataFrame({
+                        'Metric': ['Total Positions', 'Long Days', 'Flat Days', 'Position Changes', 
+                                  'Avg Position Length', 'Positive Long Days', 'Negative Long Days',
+                                  'Avg Daily Return (Long)', 'Avg Win Size', 'Avg Loss Size'],
+                        'Value': [
+                            f"{total_positions}",
+                            f"{long_positions}",
+                            f"{flat_positions}",
+                            f"{position_changes}",
+                            f"{avg_position_length:.1f} days",
+                            f"{positive_long_days}",
+                            f"{negative_long_days}",
+                            f"{avg_long_return:.2f}%",
+                            f"{avg_positive_return:.2f}%",
+                            f"{avg_negative_return:.2f}%"
+                        ]
+                    })
+                    st.dataframe(trading_df, use_container_width=True, hide_index=True)
+                
+                # Monthly heatmap
+                if len(strategy_monthly) > 12:  # Only show if we have enough data
+                    st.subheader("Monthly Returns Heatmap")
+                    
+                    # Prepare data for heatmap
+                    monthly_data = pd.DataFrame({
+                        'Strategy': strategy_monthly.values,
+                        'Buy_Hold': buyhold_monthly.values,
+                        'Outperformance': strategy_monthly.values - buyhold_monthly.values
+                    }, index=strategy_monthly.index)
+                    
+                    monthly_data['Year'] = monthly_data.index.year
+                    monthly_data['Month'] = monthly_data.index.month
+                    
+                    # Create pivot table for heatmap
+                    heatmap_data = monthly_data.pivot(index='Year', columns='Month', values='Outperformance')
+                    
+                    if PLOTLY_AVAILABLE:
+                        fig_heatmap = go.Figure(data=go.Heatmap(
+                            z=heatmap_data.values,
+                            x=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            y=heatmap_data.index,
+                            colorscale='RdYlGn',
+                            zmid=0,
+                            colorbar=dict(title="Outperformance (%)")
+                        ))
+                        
+                        fig_heatmap.update_layout(
+                            title="Monthly Outperformance vs Buy & Hold (%)",
+                            xaxis_title="Month",
+                            yaxis_title="Year",
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
+                    else:
+                        st.dataframe(heatmap_data.round(1), use_container_width=True)
+                
                 # Technical implementation note
                 st.info("""
                 **Strategy Implementation Notes:**
