@@ -607,8 +607,6 @@ def main():
                 - Green: Q1 (Goldilocks) & Q3 (Stagflation)
                 - Blue: Q2 (Reflation) & Q4 (Deflation)
                 """)
-                
-                # NEW ENHANCED STRATEGY ANALYSIS SECTION
             
             # 90-day table
             st.subheader("Last 90 Days Detailed View")
@@ -721,6 +719,8 @@ def main():
                 - **Strategy Logic**: Long during Q1/Q3 quadrants AND above 50 EMA, flat otherwise
                 - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
+                
+                # Enhanced Strategy Analysis Section
                 st.subheader("Enhanced Strategy Analysis")
                 
                 # Calculate monthly and yearly returns
