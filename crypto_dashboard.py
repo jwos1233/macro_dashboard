@@ -1192,15 +1192,15 @@ def main():
             
             with col2:
                 if performance_data and PLOTLY_AVAILABLE:
-                    st.subheader("Strategy vs Buy & Hold (Last 30 Days)")
-                    last_30_strategy = performance_data['strategy_metrics']['cumulative_series'].tail(30)
-                    last_30_buyhold = performance_data['buyhold_metrics']['cumulative_series'].tail(30)
+                    st.subheader("Strategy vs Buy & Hold (Last 90 Days)")
+                    last_90_strategy = performance_data['strategy_metrics']['cumulative_series'].tail(90)
+                    last_90_buyhold = performance_data['buyhold_metrics']['cumulative_series'].tail(90)
                     
                     # Rebase to % from zero
                     chart_data = pd.DataFrame({
-                        'Strategy': (last_30_strategy.values - last_30_strategy.iloc[0]) / last_30_strategy.iloc[0] * 100,
-                        'Buy & Hold': (last_30_buyhold.values - last_30_buyhold.iloc[0]) / last_30_buyhold.iloc[0] * 100
-                    }, index=last_30_strategy.index)
+                        'Strategy': (last_90_strategy.values - last_90_strategy.iloc[0]) / last_90_strategy.iloc[0] * 100,
+                        'Buy & Hold': (last_90_buyhold.values - last_90_buyhold.iloc[0]) / last_90_buyhold.iloc[0] * 100
+                    }, index=last_90_strategy.index)
                     
                     st.line_chart(chart_data)
                 else:
