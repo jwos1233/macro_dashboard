@@ -692,9 +692,8 @@ def main():
             st.error("BTC data not available")
             return
         
-        # Prepare data for the last 90 days
+        # Prepare data for different time periods
         last_90_days = daily_results.tail(90)
-        btc_90_days = price_data['BTC-USD'].tail(90)
         
         # Show current quadrant
         if not last_90_days.empty:
@@ -702,69 +701,62 @@ def main():
             if pd.notna(latest_quad):
                 st.info(f"**Current Quadrant**: {latest_quad} - {analyzer.quadrant_descriptions[latest_quad]}")
         
-        # Chart 1: Color-coded BTC Price Chart
-        st.subheader("Bitcoin Price - Last 90 Days (Color-coded by Quadrant)")
+        # Chart 1: Color-coded BTC Price Chart (3 years)
+        st.subheader("Bitcoin Price (Last 3 Years)")
         
         if PLOTLY_AVAILABLE:
+            # Use all available data for BTC chart (3 years)
+            btc_data = price_data['BTC-USD']
+            
+            # Align quadrant data with BTC data (pad with Q2 for missing earlier data)
+            aligned_quadrants = pd.Series('Q2', index=btc_data.index)
+            for date in daily_results.index:
+                if date in aligned_quadrants.index:
+                    aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
+            
             # Create plotly chart with color coding
             fig = go.Figure()
             
-            # Merge BTC price with quadrant data
-            chart_data = pd.DataFrame({
-                'date': btc_90_days.index,
-                'price': btc_90_days.values,
-                'quadrant': last_90_days['Primary_Quadrant'].values
-            })
-            
             # Create segments for different colors
-            current_quad = chart_data['quadrant'].iloc[0] if len(chart_data) > 0 else 'Q2'
+            current_quad = aligned_quadrants.iloc[0] if len(aligned_quadrants) > 0 else 'Q2'
             segment_start = 0
             
-            for i in range(1, len(chart_data)):
-                if chart_data['quadrant'].iloc[i] != current_quad or i == len(chart_data) - 1:
+            for i in range(1, len(btc_data)):
+                if aligned_quadrants.iloc[i] != current_quad or i == len(btc_data) - 1:
                     # End of current segment
-                    end_idx = i if i == len(chart_data) - 1 else i - 1
+                    end_idx = i if i == len(btc_data) - 1 else i - 1
                     
                     # Determine color: Green for Q1 and Q3, Blue for Q2 and Q4
                     color = '#00ff00' if current_quad in ['Q1', 'Q3'] else '#1f77b4'
-                    quad_name = analyzer.quadrant_descriptions.get(current_quad, current_quad)
                     
-                    # Add line segment
+                    # Add line segment (no legend)
                     fig.add_trace(go.Scatter(
-                        x=chart_data['date'].iloc[segment_start:end_idx+2],  # +2 to include next point
-                        y=chart_data['price'].iloc[segment_start:end_idx+2],
+                        x=btc_data.index[segment_start:end_idx+2],  # +2 to include next point
+                        y=btc_data.values[segment_start:end_idx+2],
                         mode='lines',
                         line=dict(color=color, width=2),
-                        name=f'{current_quad}: {quad_name}',
-                        showlegend=True
+                        showlegend=False  # Remove legend
                     ))
                     
                     # Start new segment
                     segment_start = i
-                    current_quad = chart_data['quadrant'].iloc[i]
+                    current_quad = aligned_quadrants.iloc[i]
             
             fig.update_layout(
-                title="BTC Price with Quadrant Color-coding",
                 xaxis_title="Date",
                 yaxis_title="Price (USD)",
                 height=500,
-                showlegend=True,
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="left",
-                    x=0.01
-                )
+                showlegend=False  # Ensure no legend
             )
             
             st.plotly_chart(fig, use_container_width=True)
             
         else:
-            # Fallback to basic streamlit chart
-            st.line_chart(btc_90_days)
+            # Fallback to basic streamlit chart (3 years)
+            st.line_chart(price_data['BTC-USD'])
             st.info("💡 Install plotly for color-coded quadrant chart: `pip install plotly`")
         
-        # Chart 2: Quadrant Scores
+        # Chart 2: Quadrant Scores (90 days only)
         st.subheader("Quadrant Scores - Last 90 Days")
         chart_data = last_90_days[['Q1_Score', 'Q2_Score', 'Q3_Score', 'Q4_Score']]
         st.line_chart(chart_data)
