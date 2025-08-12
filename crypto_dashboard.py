@@ -243,11 +243,13 @@ class AxeListGenerator:
             return pd.DataFrame(valid_tokens)
             
         except Exception as e:
-            st.error(f"Error validating Binance symbols: {e}")
+            st.warning(f"⚠️ Binance validation failed ({e}), using all tokens")
+            # Fallback: assume all common tokens are valid
             return tokens_df
     
     def get_coin_data(self, symbol: str, days: int = 100) -> Optional[pd.DataFrame]:
         try:
+            # Try Binance first
             end_time = int(time.time() * 1000)
             start_time = end_time - (days * 24 * 60 * 60 * 1000)
             
@@ -289,8 +291,47 @@ class AxeListGenerator:
             
             return df
             
-        except Exception:
-            return None
+        except Exception as e:
+            # Fallback: try CoinGecko for major coins
+            try:
+                coin_id = symbol.replace('USDT', '').lower()
+                # Map common symbols to CoinGecko IDs
+                coin_map = {
+                    'btc': 'bitcoin', 'eth': 'ethereum', 'bnb': 'binancecoin',
+                    'ada': 'cardano', 'xrp': 'ripple', 'sol': 'solana',
+                    'dot': 'polkadot', 'doge': 'dogecoin', 'avax': 'avalanche-2',
+                    'matic': 'matic-network', 'link': 'chainlink', 'uni': 'uniswap'
+                }
+                
+                if coin_id in coin_map:
+                    coin_id = coin_map[coin_id]
+                
+                url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+                params = {'vs_currency': 'usd', 'days': days}
+                
+                response = self.session.get(url, params=params, timeout=10)
+                response.raise_for_status()
+                time.sleep(0.5)  # Longer delay for CoinGecko
+                
+                data = response.json()
+                prices = data.get('prices', [])
+                
+                if not prices:
+                    return None
+                
+                df = pd.DataFrame(prices, columns=['timestamp', 'price'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df['returns'] = df['price'].pct_change()
+                df['ma_50'] = df['price'].rolling(window=50).mean()
+                df['ma_20'] = df['price'].rolling(window=20).mean()
+                df['above_ma50'] = df['price'] > df['ma_50']
+                df['above_ma20'] = df['price'] > df['ma_20']
+                df['ma50_distance'] = (df['price'] - df['ma_50']) / df['ma_50'] * 100
+                
+                return df
+                
+            except Exception:
+                return None
     
     def determine_baseline_asset(self) -> str:
         try:
