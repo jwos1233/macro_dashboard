@@ -701,12 +701,15 @@ def main():
             if pd.notna(latest_quad):
                 st.info(f"**Current Quadrant**: {latest_quad} - {analyzer.quadrant_descriptions[latest_quad]}")
         
-        # Chart 1: Color-coded BTC Price Chart (3 years)
+        # Chart 1: Color-coded BTC Price Chart with 50 EMA Filter (3 years)
         st.subheader("Bitcoin Price (Last 3 Years)")
         
         if PLOTLY_AVAILABLE:
             # Use all available data for BTC chart (3 years)
-            btc_data = price_data['BTC-USD']
+            btc_data = price_data['BTC-USD'].copy()
+            
+            # Calculate 50 EMA
+            btc_50ema = btc_data.rolling(window=50).mean()
             
             # Align quadrant data with BTC data (pad with Q2 for missing earlier data)
             aligned_quadrants = pd.Series('Q2', index=btc_data.index)
@@ -714,47 +717,76 @@ def main():
                 if date in aligned_quadrants.index:
                     aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
             
+            # Create combined condition for green: (Q1 or Q3) AND above 50 EMA
+            above_50ema = btc_data > btc_50ema
+            favorable_quad = aligned_quadrants.isin(['Q1', 'Q3'])
+            show_green = above_50ema & favorable_quad
+            
             # Create plotly chart with color coding
             fig = go.Figure()
             
-            # Create segments for different colors
-            current_quad = aligned_quadrants.iloc[0] if len(aligned_quadrants) > 0 else 'Q2'
+            # Add 50 EMA line first (behind the price)
+            fig.add_trace(go.Scatter(
+                x=btc_data.index,
+                y=btc_50ema.values,
+                mode='lines',
+                line=dict(color='orange', width=1, dash='dash'),
+                name='50 EMA',
+                showlegend=True,
+                opacity=0.7
+            ))
+            
+            # Create segments for price line with different colors
+            current_condition = show_green.iloc[0] if len(show_green) > 0 else False
             segment_start = 0
             
             for i in range(1, len(btc_data)):
-                if aligned_quadrants.iloc[i] != current_quad or i == len(btc_data) - 1:
+                if show_green.iloc[i] != current_condition or i == len(btc_data) - 1:
                     # End of current segment
                     end_idx = i if i == len(btc_data) - 1 else i - 1
                     
-                    # Determine color: Green for Q1 and Q3, Blue for Q2 and Q4
-                    color = '#00ff00' if current_quad in ['Q1', 'Q3'] else '#1f77b4'
+                    # Determine color: Green only if in Q1/Q3 AND above 50 EMA, otherwise blue
+                    color = '#00ff00' if current_condition else '#1f77b4'
                     
-                    # Add line segment (no legend)
+                    # Add line segment
                     fig.add_trace(go.Scatter(
                         x=btc_data.index[segment_start:end_idx+2],  # +2 to include next point
                         y=btc_data.values[segment_start:end_idx+2],
                         mode='lines',
                         line=dict(color=color, width=2),
-                        showlegend=False  # Remove legend
+                        showlegend=False  # Remove legend for price segments
                     ))
                     
                     # Start new segment
                     segment_start = i
-                    current_quad = aligned_quadrants.iloc[i]
+                    current_condition = show_green.iloc[i]
             
             fig.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Price (USD)",
                 height=500,
-                showlegend=False  # Ensure no legend
+                showlegend=True,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
             )
             
             st.plotly_chart(fig, use_container_width=True)
             
+            # Add explanation
+            st.info("🟢 **Green**: Q1/Q3 quadrants AND above 50 EMA | 🔵 **Blue**: All other conditions | 🟠 **Orange dashed**: 50 EMA")
+            
         else:
             # Fallback to basic streamlit chart (3 years)
-            st.line_chart(price_data['BTC-USD'])
-            st.info("💡 Install plotly for color-coded quadrant chart: `pip install plotly`")
+            btc_with_ema = pd.DataFrame({
+                'BTC Price': price_data['BTC-USD'],
+                '50 EMA': price_data['BTC-USD'].rolling(window=50).mean()
+            })
+            st.line_chart(btc_with_ema)
+            st.info("💡 Install plotly for color-coded quadrant chart with EMA filter")
         
         # Chart 2: Quadrant Scores (90 days only)
         st.subheader("Quadrant Scores - Last 90 Days")
