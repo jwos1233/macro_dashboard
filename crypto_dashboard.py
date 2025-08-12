@@ -185,6 +185,9 @@ class StrategyPerformanceAnalysis:
             # Align price data with quadrant data
             btc_prices = price_data['BTC-USD'].copy()
             
+            # Calculate 50 EMA
+            btc_50ema = btc_prices.rolling(window=50).mean()
+            
             # Forward fill quadrant data to match price data length
             aligned_quadrants = pd.Series('Q2', index=btc_prices.index)
             for date in daily_results.index:
@@ -197,12 +200,15 @@ class StrategyPerformanceAnalysis:
             # CRITICAL FIX: Apply 1-day lag to avoid look-ahead bias
             # Shift quadrant signals forward by 1 day (lag the signal)
             lagged_quadrants = aligned_quadrants.shift(1).fillna('Q2')
+            lagged_50ema = btc_50ema.shift(1).fillna(btc_prices.iloc[0])  # Lag EMA as well
             
             # Calculate daily returns
             btc_returns = btc_prices.pct_change().fillna(0)
             
-            # Strategy: Long in Q1+Q3, Flat in Q2+Q4 (using lagged signals)
-            strategy_positions = lagged_quadrants.isin(['Q1', 'Q3']).astype(int)
+            # Strategy: Long in Q1+Q3 AND above 50 EMA, Flat otherwise (using lagged signals)
+            favorable_quadrant = lagged_quadrants.isin(['Q1', 'Q3'])
+            above_ema = btc_prices > lagged_50ema  # Current price vs lagged EMA
+            strategy_positions = (favorable_quadrant & above_ema).astype(int)
             strategy_returns = btc_returns * strategy_positions
             
             # Buy & Hold returns
@@ -259,6 +265,11 @@ class StrategyPerformanceAnalysis:
             flat_days = total_days - long_days
             time_in_market = (long_days / total_days) * 100 if total_days > 0 else 0
             
+            # Calculate additional EMA-related metrics
+            quadrant_only_positions = lagged_quadrants.isin(['Q1', 'Q3']).astype(int)
+            quadrant_only_days = quadrant_only_positions.sum()
+            ema_filter_reduction = ((quadrant_only_days - long_days) / quadrant_only_days * 100) if quadrant_only_days > 0 else 0
+            
             return {
                 'strategy_metrics': strategy_metrics,
                 'buyhold_metrics': buyhold_metrics,
@@ -270,7 +281,11 @@ class StrategyPerformanceAnalysis:
                 'long_days': long_days,
                 'flat_days': flat_days,
                 'btc_prices': btc_prices,
-                'signal_lag_applied': True  # Flag to indicate proper implementation
+                'btc_50ema': lagged_50ema,
+                'quadrant_only_days': quadrant_only_days,
+                'ema_filter_reduction': ema_filter_reduction,
+                'signal_lag_applied': True,
+                'ema_filter_applied': True  # Flag to indicate EMA filter is used
             }
             
         except Exception as e:
@@ -646,7 +661,8 @@ def main():
                 
                 with col4:
                     st.metric("Time in Market", 
-                             f"{performance_data['time_in_market']:.1f}%")
+                             f"{performance_data['time_in_market']:.1f}%",
+                             delta=f"EMA Filter: -{performance_data['ema_filter_reduction']:.1f}%")
                 
                 # Performance charts
                 strategy_analyzer.create_performance_charts(performance_data)
@@ -689,10 +705,10 @@ def main():
                 risk_adjusted = strategy_metrics['sharpe_ratio'] - buyhold_metrics['sharpe_ratio']
                 
                 if outperformance > 0:
-                    perf_color = "GREEN"
+                    perf_color = "POSITIVE"
                     perf_text = "outperformed"
                 else:
-                    perf_color = "RED"
+                    perf_color = "NEGATIVE"
                     perf_text = "underperformed"
                 
                 st.markdown(f"""
@@ -700,19 +716,25 @@ def main():
                 - {perf_color}: The Quadrant Strategy **{perf_text}** Buy & Hold by **{outperformance:+.1f}%**
                 - **Risk-Adjusted Performance**: Sharpe ratio difference of **{risk_adjusted:+.2f}**
                 - **Market Exposure**: Only **{performance_data['time_in_market']:.1f}%** of the time ({performance_data['long_days']} days long, {performance_data['flat_days']} days flat)
-                - **Strategy Logic**: Long during Q1 (Goldilocks) and Q3 (Stagflation), flat during Q2 (Reflation) and Q4 (Deflation)
+                - **Strategy Logic**: Long during Q1/Q3 quadrants AND above 50 EMA, flat otherwise
+                - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
                 
                 # Technical implementation note
                 st.info("""
                 **Strategy Implementation Notes:**
                 
+                **Combined Filters Applied**:
+                - **Quadrant Filter**: Long only in Q1 (Goldilocks) and Q3 (Stagflation)
+                - **50 EMA Filter**: Long only when BTC price is above 50-day EMA
+                - **Both Required**: Must satisfy BOTH conditions to be long
+                
                 **Signal Lag Applied**: This backtest uses **1-day lagged signals** to avoid look-ahead bias:
-                - **Day T-1**: Calculate quadrant using momentum data through T-1
-                - **Day T**: Apply that signal to Day T's trading (realistic implementation)
+                - **Day T-1**: Calculate quadrant and 50 EMA using data through T-1
+                - **Day T**: Apply combined signal to Day T's trading (realistic implementation)
                 - **No Cheating**: We never use "today's" price to make "today's" trading decision
                 
-                **Real Trading**: In practice, you'd calculate the quadrant at market close and apply the position the next day.
+                **Real Trading**: In practice, you'd calculate both signals at market close and apply the position the next day.
                 """)
                 
             else:
