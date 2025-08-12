@@ -176,16 +176,34 @@ class StrategyPerformanceAnalysis:
         self.strategy_name = "Quadrant Strategy"
         self.benchmark_name = "Buy & Hold"
     
-    def calculate_strategy_performance(self, price_data: pd.DataFrame, daily_results: pd.DataFrame, crypto_symbol: str = 'BTC-USD') -> Dict:
+    def calculate_strategy_performance(self, price_data: pd.DataFrame, daily_results: pd.DataFrame, crypto_symbol: str = 'BTC-USD', is_portfolio: bool = False) -> Dict:
         """Calculate performance metrics for quadrant strategy vs buy & hold"""
         
-        if price_data is None or crypto_symbol not in price_data.columns or daily_results is None:
-            return None
+        if is_portfolio:
+            if 'BTC-USD' not in price_data.columns or 'ETH-USD' not in price_data.columns:
+                return None
+        else:
+            if price_data is None or crypto_symbol not in price_data.columns or daily_results is None:
+                return None
         
         try:
-            # Align price data with quadrant data
-            crypto_prices = price_data[crypto_symbol].copy()
-            crypto_name = "Bitcoin" if crypto_symbol == 'BTC-USD' else "Ethereum"
+            # Handle portfolio vs single crypto
+            if is_portfolio:
+                # Create 50/50 portfolio
+                btc_prices = price_data['BTC-USD'].copy()
+                eth_prices = price_data['ETH-USD'].copy()
+                
+                # Normalize to starting value of 100 for both
+                btc_normalized = (btc_prices / btc_prices.iloc[0]) * 100
+                eth_normalized = (eth_prices / eth_prices.iloc[0]) * 100
+                
+                # 50/50 portfolio
+                crypto_prices = (btc_normalized + eth_normalized) / 2
+                crypto_name = "50/50 BTC+ETH Portfolio"
+            else:
+                # Single crypto
+                crypto_prices = price_data[crypto_symbol].copy()
+                crypto_name = "Bitcoin" if crypto_symbol == 'BTC-USD' else "Ethereum"
             
             # Calculate 50 EMA
             crypto_50ema = crypto_prices.rolling(window=50).mean()
@@ -286,6 +304,9 @@ class StrategyPerformanceAnalysis:
                 'crypto_50ema': lagged_50ema,
                 'crypto_symbol': crypto_symbol,
                 'crypto_name': crypto_name,
+                'is_portfolio': is_portfolio,
+                'btc_prices': price_data['BTC-USD'] if is_portfolio else None,
+                'eth_prices': price_data['ETH-USD'] if is_portfolio else None,
                 'quadrant_only_days': quadrant_only_days,
                 'ema_filter_reduction': ema_filter_reduction,
                 'signal_lag_applied': True,
@@ -318,7 +339,7 @@ class StrategyPerformanceAnalysis:
             x=strategy_metrics['cumulative_series'].index,
             y=strategy_metrics['cumulative_series'].values * 100,  # Convert to percentage
             mode='lines',
-            name=self.strategy_name,
+            name=f"{self.strategy_name} ({performance_data['crypto_name']})",
             line=dict(color='#00ff00', width=2)
         ))
         
@@ -327,12 +348,39 @@ class StrategyPerformanceAnalysis:
             x=buyhold_metrics['cumulative_series'].index,
             y=buyhold_metrics['cumulative_series'].values * 100,
             mode='lines',
-            name=self.benchmark_name,
+            name=f"{self.benchmark_name} ({performance_data['crypto_name']})",
             line=dict(color='#1f77b4', width=2)
         ))
         
+        # For portfolio, add individual BTC and ETH benchmarks
+        if performance_data.get('is_portfolio', False):
+            btc_returns = performance_data['btc_prices'].pct_change().fillna(0)
+            eth_returns = performance_data['eth_prices'].pct_change().fillna(0)
+            btc_cumulative = (1 + btc_returns).cumprod() * 100
+            eth_cumulative = (1 + eth_returns).cumprod() * 100
+            
+            fig_performance.add_trace(go.Scatter(
+                x=btc_cumulative.index,
+                y=btc_cumulative.values,
+                mode='lines',
+                name="Bitcoin Buy & Hold",
+                line=dict(color='#ff7f0e', width=2, dash='dash')
+            ))
+            
+            fig_performance.add_trace(go.Scatter(
+                x=eth_cumulative.index,
+                y=eth_cumulative.values,
+                mode='lines',
+                name="Ethereum Buy & Hold",
+                line=dict(color='#d62728', width=2, dash='dash')
+            ))
+        
+        title_text = "Cumulative Performance: Quadrant Strategy vs Buy & Hold"
+        if performance_data.get('is_portfolio', False):
+            title_text += " + Individual Assets"
+            
         fig_performance.update_layout(
-            title="Cumulative Performance: Quadrant Strategy vs Buy & Hold",
+            title=title_text,
             xaxis_title="Date",
             yaxis_title="Cumulative Return (%)",
             height=500,
@@ -637,27 +685,42 @@ def main():
         st.sidebar.markdown("### Crypto Selection")
         crypto_choice = st.sidebar.radio(
             "Select Cryptocurrency",
-            ("Bitcoin (BTC)", "Ethereum (ETH)"),
-            help="Choose which cryptocurrency to analyze with the quadrant strategy"
+            ("Bitcoin (BTC)", "Ethereum (ETH)", "50/50 BTC+ETH Portfolio"),
+            help="Choose which cryptocurrency or portfolio to analyze with the quadrant strategy"
         )
         
-        # Map choice to symbol
-        crypto_symbol = 'BTC-USD' if crypto_choice == "Bitcoin (BTC)" else 'ETH-USD'
-        crypto_name = "Bitcoin" if crypto_choice == "Bitcoin (BTC)" else "Ethereum"
+        # Map choice to symbol and name
+        if crypto_choice == "Bitcoin (BTC)":
+            crypto_symbol = 'BTC-USD'
+            crypto_name = "Bitcoin"
+            is_portfolio = False
+        elif crypto_choice == "Ethereum (ETH)":
+            crypto_symbol = 'ETH-USD'
+            crypto_name = "Ethereum"
+            is_portfolio = False
+        else:  # 50/50 Portfolio
+            crypto_symbol = 'PORTFOLIO'
+            crypto_name = "50/50 BTC+ETH Portfolio"
+            is_portfolio = True
         
         # Load data
         with st.spinner("Loading strategy performance data..."):
             price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
         
         if daily_results is not None and price_data is not None:
-            # Check if selected crypto is available
-            if crypto_symbol not in price_data.columns:
-                st.error(f"{crypto_name} data not available in the dataset. Please try Bitcoin instead.")
-                return
+            # Check if required crypto data is available
+            if is_portfolio:
+                if 'BTC-USD' not in price_data.columns or 'ETH-USD' not in price_data.columns:
+                    st.error("Both BTC and ETH data required for portfolio analysis.")
+                    return
+            else:
+                if crypto_symbol not in price_data.columns:
+                    st.error(f"{crypto_name} data not available in the dataset.")
+                    return
                 
             # Calculate strategy performance
             strategy_analyzer = StrategyPerformanceAnalysis()
-            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results, crypto_symbol)
+            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results, crypto_symbol, is_portfolio)
             
             if performance_data:
                 strategy_metrics = performance_data['strategy_metrics']
