@@ -352,35 +352,8 @@ class StrategyPerformanceAnalysis:
             line=dict(color='#1f77b4', width=2)
         ))
         
-        # For portfolio, add individual BTC and ETH benchmarks
-        if performance_data.get('is_portfolio', False):
-            btc_returns = performance_data['btc_prices'].pct_change().fillna(0)
-            eth_returns = performance_data['eth_prices'].pct_change().fillna(0)
-            btc_cumulative = (1 + btc_returns).cumprod() * 100
-            eth_cumulative = (1 + eth_returns).cumprod() * 100
-            
-            fig_performance.add_trace(go.Scatter(
-                x=btc_cumulative.index,
-                y=btc_cumulative.values,
-                mode='lines',
-                name="Bitcoin Buy & Hold",
-                line=dict(color='#ff7f0e', width=2, dash='dash')
-            ))
-            
-            fig_performance.add_trace(go.Scatter(
-                x=eth_cumulative.index,
-                y=eth_cumulative.values,
-                mode='lines',
-                name="Ethereum Buy & Hold",
-                line=dict(color='#d62728', width=2, dash='dash')
-            ))
-        
-        title_text = "Cumulative Performance: Quadrant Strategy vs Buy & Hold"
-        if performance_data.get('is_portfolio', False):
-            title_text += " + Individual Assets"
-            
         fig_performance.update_layout(
-            title=title_text,
+            title="Cumulative Performance: Quadrant Strategy vs Buy & Hold",
             xaxis_title="Date",
             yaxis_title="Cumulative Return (%)",
             height=500,
