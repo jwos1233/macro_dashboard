@@ -635,20 +635,32 @@ def main():
     st.markdown("""
     <style>
         .main-header {
-            font-size: 2.5rem; font-weight: bold; color: #1E88E5;
-            text-align: center; margin-bottom: 2rem;
+            font-size: 2.5rem; 
+            font-weight: bold; 
+            color: #1E88E5;
+            text-align: center; 
+            margin-bottom: 2rem;
         }
         .quadrant-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem; border-radius: 10px; color: white;
-            text-align: center; margin: 0.5rem 0;
+            padding: 1rem; 
+            border-radius: 10px; 
+            color: white;
+            text-align: center; 
+            margin: 0.5rem 0;
         }
         .metric-card {
-            background: #f8f9fa; padding: 1rem; border-radius: 8px;
-            border-left: 4px solid #1E88E5; margin: 0.5rem 0;
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 8px;
+            border-left: 4px solid #1E88E5; 
+            margin: 0.5rem 0;
         }
         .sidebar-info {
-            background: #e3f2fd; padding: 1rem; border-radius: 8px; margin: 1rem 0;
+            background: #e3f2fd; 
+            padding: 1rem; 
+            border-radius: 8px; 
+            margin: 1rem 0;
         }
     </style>
     """, unsafe_allow_html=True)
