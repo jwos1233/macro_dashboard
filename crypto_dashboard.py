@@ -782,9 +782,6 @@ def main():
                 - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
                 
-                # TEST: If you see this message, the new code is running
-                st.success("✅ NEW CODE LOADED - Implementation Notes Removed!")
-                
                 # Enhanced Strategy Analysis Section
                 st.subheader("Enhanced Strategy Analysis")
                 
