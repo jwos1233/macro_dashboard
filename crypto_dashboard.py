@@ -829,9 +829,14 @@ def main():
                     sortino_strategy = (strategy_metrics['annualized_return'] - 2) / (downside_std_strategy * 100) if downside_std_strategy > 0 else 0
                     sortino_buyhold = (buyhold_metrics['annualized_return'] - 2) / (downside_std_buyhold * 100) if downside_std_buyhold > 0 else 0
                     
-                    # Calmar ratio
-                    calmar_strategy = strategy_metrics['annualized_return'] / abs(strategy_metrics['max_drawdown']) if strategy_metrics['max_drawdown'] != 0 else float('inf')
-                    calmar_buyhold = buyhold_metrics['annualized_return'] / abs(buyhold_metrics['max_drawdown']) if buyhold_metrics['max_drawdown'] != 0 else float('inf')
+                    # Calmar ratio - safer calculation
+                    def safe_calmar_ratio(annual_return, max_drawdown):
+                        if max_drawdown == 0 or np.isnan(max_drawdown) or np.isnan(annual_return):
+                            return None
+                        return annual_return / abs(max_drawdown)
+                    
+                    calmar_strategy = safe_calmar_ratio(strategy_metrics['annualized_return'], strategy_metrics['max_drawdown'])
+                    calmar_buyhold = safe_calmar_ratio(buyhold_metrics['annualized_return'], buyhold_metrics['max_drawdown'])
                     
                     risk_df = pd.DataFrame({
                         'Metric': ['Best Month (%)', 'Worst Month (%)', 'Sortino Ratio', 'Positive Months', 'Calmar Ratio'],
@@ -840,14 +845,14 @@ def main():
                             f"{worst_month_strategy:.1f}",
                             f"{sortino_strategy:.2f}",
                             f"{(strategy_monthly > 0).sum()}/{len(strategy_monthly)}",
-                            f"{calmar_strategy:.2f}" if not np.isinf(calmar_strategy) and not np.isnan(calmar_strategy) else "N/A"
+                            f"{calmar_strategy:.2f}" if calmar_strategy is not None else "N/A"
                         ],
                         'Buy & Hold': [
                             f"{best_month_buyhold:.1f}",
                             f"{worst_month_buyhold:.1f}",
                             f"{sortino_buyhold:.2f}",
                             f"{(buyhold_monthly > 0).sum()}/{len(buyhold_monthly)}",
-                            f"{calmar_buyhold:.2f}" if not np.isinf(calmar_buyhold) and not np.isnan(calmar_buyhold) else "N/A"
+                            f"{calmar_buyhold:.2f}" if calmar_buyhold is not None else "N/A"
                         ]
                     })
                     st.dataframe(risk_df, use_container_width=True, hide_index=True)
@@ -864,8 +869,8 @@ def main():
                     - Buy & Hold: **{sortino_buyhold:.2f}**
                     
                     **Calmar Ratio**: Annual return divided by max drawdown:
-                    - Strategy: **{calmar_strategy:.2f if not np.isinf(calmar_strategy) and not np.isnan(calmar_strategy) else 'N/A'}**
-                    - Buy & Hold: **{calmar_buyhold:.2f if not np.isinf(calmar_buyhold) and not np.isnan(calmar_buyhold) else 'N/A'}**
+                    - Strategy: **{calmar_strategy:.2f if calmar_strategy is not None else 'N/A'}**
+                    - Buy & Hold: **{calmar_buyhold:.2f if calmar_buyhold is not None else 'N/A'}**
                     """)
                 
                 # **3. Detailed Trading Statistics**
@@ -989,7 +994,7 @@ def main():
                     
                     **Calmar Ratio**: {calmar_strategy:.2f if not np.isinf(calmar_strategy) else 'Excellent'} vs {calmar_buyhold:.2f if not np.isinf(calmar_buyhold) else 'Excellent'}
                     - Measures return per unit of maximum drawdown
-                    - Strategy provides {'better' if calmar_strategy > calmar_buyhold else 'similar'} risk-adjusted returns
+                    - Strategy provides {'better' if calmar_strategy is not None and calmar_buyhold is not None and calmar_strategy > calmar_buyhold else 'similar'} risk-adjusted returns
                     """)
                 
                 with col2:
