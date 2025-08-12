@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Crypto Macro Flow Dashboard - Live Version with Error Handling
-Complete dashboard with quadrant analysis and axe list generator
+Crypto Macro Flow Dashboard - Complete Working Version
+Live dashboard with quadrant analysis and axe list generator
 """
 
 import streamlit as st
@@ -37,7 +37,6 @@ warnings.filterwarnings('ignore')
 
 @dataclass
 class AssetClassification:
-    """Define asset classification for quadrant analysis"""
     symbol: str
     name: str
     primary_quadrant: str
@@ -95,8 +94,7 @@ class CurrentQuadrantAnalysis:
                     clean_close = clean_close[clean_close > 0]
                     if len(clean_close) >= 10:
                         data[symbol] = clean_close
-            except Exception as e:
-                st.warning(f"Failed to fetch {symbol}: {str(e)}")
+            except Exception:
                 continue
         
         df = pd.DataFrame(data)
@@ -279,7 +277,7 @@ class AxeListGenerator:
             df['low'] = df['low'].astype(float)
             df['volume'] = df['volume'].astype(float)
             
-            if len(df) < days * 0.8:  # Allow some missing days
+            if len(df) < days * 0.8:
                 return None
             
             df['returns'] = df['price'].pct_change()
@@ -603,27 +601,321 @@ def main():
         daily_results = analyzer.determine_daily_quadrant(quadrant_scores)
         return price_data, daily_results, analyzer
 
-    def create_btc_quadrant_chart(price_data, daily_results, analyzer):
+    def create_charts(price_data, daily_results, analyzer):
         if price_data is None or 'BTC-USD' not in price_data.columns:
-            if PLOTLY_AVAILABLE:
-                return go.Figure().add_annotation(text="BTC data not available", 
-                                                xref="paper", yref="paper", x=0.5, y=0.5)
-            else:
-                st.error("BTC data not available")
-                return None
+            st.error("BTC data not available")
+            return
         
         btc_data = price_data[['BTC-USD']].copy()
         btc_data = btc_data.join(daily_results[['Primary_Quadrant']], how='left')
         
-        if PLOTLY_AVAILABLE:
-            fig = go.Figure()
+        # Chart 1: BTC Price
+        st.subheader("Bitcoin Price (Last 3 Years)")
+        st.line_chart(btc_data['BTC-USD'])
+        
+        # Show current quadrant
+        if not btc_data.empty:
+            latest_quad = btc_data['Primary_Quadrant'].iloc[-1]
+            if pd.notna(latest_quad):
+                st.info(f"**Current Quadrant**: {latest_quad} - {analyzer.quadrant_descriptions[latest_quad]}")
+        
+        # Chart 2: Quadrant Scores
+        if daily_results is not None:
+            last_30_days = daily_results.tail(30)
+            st.subheader("Quadrant Scores - Last 30 Days")
+            chart_data = last_30_days[['Q1_Score', 'Q2_Score', 'Q3_Score', 'Q4_Score']]
+            st.line_chart(chart_data)
+
+    # Main content based on page selection
+    if page == "Current Quadrant Analysis":
+        st.markdown('<h1 class="main-header">📊 Current Quadrant Analysis</h1>', unsafe_allow_html=True)
+        
+        if not YFINANCE_AVAILABLE:
+            st.error("❌ Current Quadrant Analysis requires yfinance.")
+            return
+        
+        # Load data
+        with st.spinner("Loading quadrant analysis data..."):
+            price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
+        
+        if daily_results is not None:
+            # Current quadrant info
+            last_30_days = daily_results.tail(30)
+            current_data = last_30_days.iloc[-1]
+            current_quadrant = current_data['Primary_Quadrant']
+            current_score = current_data['Primary_Score']
             
-            quadrant_colors = {
-                'Q1': '#4CAF50', 'Q2': '#FF9800', 'Q3': '#F44336', 'Q4': '#2196F3'
-            }
+            # Display current quadrant
+            col1, col2, col3, col4 = st.columns(4)
             
-            current_quad = None
-            segment_start = None
+            with col1:
+                st.markdown(f'''
+                <div class="quadrant-card">
+                    <h3>🎯 Current Quadrant</h3>
+                    <h1>{current_quadrant}</h1>
+                    <p>{analyzer.quadrant_descriptions[current_quadrant]}</p>
+                </div>
+                ''', unsafe_allow_html=True)
             
-            for i, (date, row) in enumerate(btc_data.iterrows()):
-                quad = row['Primary_
+            with col2:
+                prev_score = last_30_days['Primary_Score'].iloc[-2]
+                st.metric("Primary Score", f"{current_score:.2f}", 
+                         delta=f"{current_score - prev_score:.2f}")
+            
+            with col3:
+                confidence_val = current_data['Confidence']
+                confidence_text = "Very High" if np.isinf(confidence_val) else f"{confidence_val:.2f}"
+                st.metric("Confidence", confidence_text)
+            
+            with col4:
+                st.metric("Regime Strength", current_data['Regime_Strength'])
+            
+            # Charts
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                create_charts(price_data, daily_results, analyzer)
+            
+            with col2:
+                # Additional info
+                st.subheader("📈 Recent Quadrant Trend")
+                recent_quads = last_30_days['Primary_Quadrant'].value_counts()
+                st.bar_chart(recent_quads)
+            
+            # 30-day table
+            st.subheader("📈 Last 30 Days Detailed View")
+            
+            display_df = last_30_days[['Primary_Quadrant', 'Primary_Score', 'Q1_Score', 
+                                      'Q2_Score', 'Q3_Score', 'Q4_Score', 'Regime_Strength']].copy()
+            display_df.index = display_df.index.strftime('%Y-%m-%d')
+            display_df.columns = ['Quadrant', 'Score', 'Q1', 'Q2', 'Q3', 'Q4', 'Strength']
+            
+            st.dataframe(display_df.round(2), use_container_width=True)
+            
+        else:
+            st.error("❌ Failed to load quadrant analysis data. Please check your internet connection.")
+
+    elif page == "Axe List Generator":
+        st.markdown('<h1 class="main-header">🎯 Axe List Generator</h1>', unsafe_allow_html=True)
+        
+        if st.button("🚀 Generate Axe List", type="primary"):
+            try:
+                generator = AxeListGenerator()
+                axe_data = generator.run_analysis(top_n_tokens)
+                
+                if axe_data is not None and not axe_data.empty:
+                    st.success(f"✅ Analysis complete! Found {len(axe_data)} tokens")
+                    
+                    # Store in session state for persistence
+                    st.session_state['axe_data'] = axe_data
+                    
+                else:
+                    st.error("❌ Failed to generate axe list. Please try again.")
+            except Exception as e:
+                st.error(f"❌ Error generating axe list: {str(e)}")
+        
+        # Display results if available
+        if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+            axe_data = st.session_state['axe_data']
+            
+            # Top performers metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Top Performer", axe_data.iloc[0]['name'])
+            
+            with col2:
+                st.metric("Best Ratio vs MA", f"{axe_data['ratio_vs_ma'].max():.1f}%")
+            
+            with col3:
+                outperforming = axe_data['token_outperforming'].sum()
+                st.metric("Tokens Outperforming", f"{outperforming}/{len(axe_data)}")
+            
+            with col4:
+                avg_return = axe_data['month_return'].mean()
+                st.metric("Avg Monthly Return", f"{avg_return:.1f}%")
+            
+            # Charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Top 10: Ratio vs 50-day MA")
+                chart_data = axe_data.head(10).set_index('symbol')['ratio_vs_ma']
+                st.bar_chart(chart_data)
+            
+            with col2:
+                st.subheader("Week vs Month Returns")
+                chart_data = axe_data[['week_return', 'month_return']].head(10)
+                st.scatter_chart(chart_data)
+            
+            # Detailed table
+            st.subheader("🏆 Top Performers Detailed View")
+            
+            display_cols = ['name', 'symbol', 'ratio_vs_ma', 'market_cap_rank', 
+                           'week_return', 'month_return', 'above_ma50', 'above_ma20']
+            display_df = axe_data[display_cols].copy()
+            display_df['market_cap_rank'] = display_df['market_cap_rank'].astype(int)
+            display_df.columns = ['Name', 'Symbol', 'Ratio vs MA (%)', 'MCap Rank', 
+                                 'Week Return (%)', 'Month Return (%)', 'Above 50MA', 'Above 20MA']
+            
+            st.dataframe(display_df.round(2), use_container_width=True)
+
+    else:  # Combined Dashboard
+        st.markdown('<h1 class="main-header">🚀 Combined Macro Flow Dashboard</h1>', unsafe_allow_html=True)
+        
+        # Load quadrant data
+        if YFINANCE_AVAILABLE:
+            with st.spinner("Loading quadrant analysis..."):
+                price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
+        else:
+            price_data, daily_results, analyzer = None, None, None
+        
+        if daily_results is not None:
+            # Current status row
+            current_data = daily_results.tail(30).iloc[-1]
+            current_quadrant = current_data['Primary_Quadrant']
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                st.markdown(f'''
+                <div class="quadrant-card">
+                    <h4>Current Regime</h4>
+                    <h2>{current_quadrant}</h2>
+                    <p>{analyzer.quadrant_descriptions[current_quadrant]}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+            
+            with col2:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    top_token = st.session_state['axe_data'].iloc[0]
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>🏆 Top Axe</h4>
+                        <h3>{top_token['name']}</h3>
+                        <p>Ratio vs MA: {top_token['ratio_vs_ma']:+.1f}%</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>🏆 Top Axe</h4>
+                        <h3>Run Analysis</h3>
+                        <p>Generate axe list first</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+            
+            with col3:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    outperforming = axe_data['token_outperforming'].sum()
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>📊 Market Strength</h4>
+                        <h3>{outperforming}/{len(axe_data)}</h3>
+                        <p>Tokens outperforming baseline</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>📊 Market Strength</h4>
+                        <h3>-/-</h3>
+                        <p>Generate axe list first</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+            
+            # Main charts
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                if price_data is not None:
+                    st.subheader("Bitcoin Price Trend")
+                    st.line_chart(price_data['BTC-USD'].tail(365))
+            
+            with col2:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    st.subheader("Top 8 Tokens: Ratio vs MA")
+                    chart_data = axe_data.head(8).set_index('symbol')['ratio_vs_ma']
+                    st.bar_chart(chart_data)
+                else:
+                    st.info("Generate axe list to see top performers")
+            
+            # Quick stats
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if daily_results is not None:
+                    st.subheader("📈 Recent Quadrant Trend")
+                    recent_quads = daily_results.tail(7)['Primary_Quadrant'].value_counts()
+                    st.bar_chart(recent_quads)
+            
+            with col2:
+                st.subheader("🎯 Top 5 Axe List")
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    top_5 = axe_data.head(5)[['name', 'ratio_vs_ma', 'month_return']]
+                    top_5.columns = ['Token', 'Ratio vs MA (%)', 'Month Return (%)']
+                    st.dataframe(top_5.round(1), use_container_width=True)
+                else:
+                    st.info("Generate axe list to see top performers")
+            
+            # Generate axe list button
+            if st.button("🚀 Generate/Refresh Axe List", type="primary"):
+                with st.spinner("Generating axe list..."):
+                    try:
+                        generator = AxeListGenerator()
+                        axe_data = generator.run_analysis(top_n_tokens)
+                        
+                        if axe_data is not None and not axe_data.empty:
+                            st.session_state['axe_data'] = axe_data
+                            st.success(f"✅ Axe list updated! Found {len(axe_data)} tokens")
+                            st.experimental_rerun()
+                        else:
+                            st.error("❌ Failed to generate axe list")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+            
+        else:
+            st.error("❌ Failed to load dashboard data. Please refresh the page.")
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 Data Sources")
+    st.sidebar.markdown("• **Quadrant Analysis**: Yahoo Finance")
+    st.sidebar.markdown("• **Axe List**: CoinGecko + Binance")
+    st.sidebar.markdown("• **Refresh Rate**: 5 minutes")
+    
+    # Status indicators
+    st.sidebar.markdown("### 🔧 System Status")
+    if YFINANCE_AVAILABLE:
+        st.sidebar.markdown("• ✅ Yahoo Finance: Ready")
+    else:
+        st.sidebar.markdown("• ❌ Yahoo Finance: Missing")
+    
+    if PLOTLY_AVAILABLE:
+        st.sidebar.markdown("• ✅ Plotly Charts: Ready")
+    else:
+        st.sidebar.markdown("• ⚠️ Plotly Charts: Basic mode")
+    
+    # Instructions
+    with st.sidebar.expander("📖 How to Use"):
+        st.markdown("""
+        **Quadrant Analysis:**
+        - Shows current market regime (Growth/Inflation)
+        - BTC chart colored by quadrant periods
+        - Last 30 days detailed scores
+        
+        **Axe List Generator:**
+        - Finds tokens outperforming BTC/ETH baseline
+        - Uses 50-day MA ratio analysis
+        - Click 'Generate' to run analysis
+        
+        **Combined Dashboard:**
+        - Overview of both analyses
+        - Generate axe list for complete view
+        """)
+
+if __name__ == "__main__":
+    main()
