@@ -585,8 +585,7 @@ def main():
     lookback_days = st.sidebar.slider("Momentum Lookback (days)", 14, 50, 21)
     top_n_tokens = st.sidebar.slider("Top N Tokens for Axe List", 20, 100, 30)
 
-    # Data caching
-    @st.cache_data(ttl=300)
+    # Data loading function (removed caching to fix serialization error)
     def load_quadrant_data(lookback_days):
         if not YFINANCE_AVAILABLE:
             return None, None, None
