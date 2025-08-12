@@ -7,8 +7,6 @@ Complete dashboard with quadrant analysis and axe list generator
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, timedelta
 import yfinance as yf
 from dataclasses import dataclass
@@ -16,6 +14,15 @@ from typing import Dict, List, Tuple, Optional
 import warnings
 import time
 import requests
+
+# Try to import plotly, fall back to basic charts if not available
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.warning("⚠️ Plotly not installed. Using basic charts. Install with: pip install plotly")
 
 warnings.filterwarnings('ignore')
 
@@ -568,84 +575,108 @@ def main():
 
     def create_btc_quadrant_chart(price_data, daily_results, analyzer):
         if price_data is None or 'BTC-USD' not in price_data.columns:
-            return go.Figure().add_annotation(text="BTC data not available", 
-                                            xref="paper", yref="paper", x=0.5, y=0.5)
+            if PLOTLY_AVAILABLE:
+                return go.Figure().add_annotation(text="BTC data not available", 
+                                                xref="paper", yref="paper", x=0.5, y=0.5)
+            else:
+                st.error("BTC data not available")
+                return None
         
         btc_data = price_data[['BTC-USD']].copy()
         btc_data = btc_data.join(daily_results[['Primary_Quadrant']], how='left')
         
-        fig = go.Figure()
-        
-        quadrant_colors = {
-            'Q1': '#4CAF50', 'Q2': '#FF9800', 'Q3': '#F44336', 'Q4': '#2196F3'
-        }
-        
-        current_quad = None
-        segment_start = None
-        
-        for i, (date, row) in enumerate(btc_data.iterrows()):
-            quad = row['Primary_Quadrant']
-            if pd.isna(quad):
-                continue
-                
-            if quad != current_quad:
-                if current_quad is not None and segment_start is not None:
-                    segment_data = btc_data.loc[segment_start:date]
-                    if len(segment_data) > 1:
-                        fig.add_trace(go.Scatter(
-                            x=segment_data.index, y=segment_data['BTC-USD'],
-                            mode='lines', line=dict(color=quadrant_colors[current_quad], width=2),
-                            name=f'{current_quad} - {analyzer.quadrant_descriptions[current_quad]}',
-                            showlegend=True, hovertemplate='<b>%{fullData.name}</b><br>' +
-                                                         'Date: %{x}<br>Price: $%{y:,.0f}<extra></extra>'
-                        ))
-                
-                current_quad = quad
-                segment_start = date
-        
-        if current_quad is not None and segment_start is not None:
-            segment_data = btc_data.loc[segment_start:]
-            if len(segment_data) > 1:
-                fig.add_trace(go.Scatter(
-                    x=segment_data.index, y=segment_data['BTC-USD'],
-                    mode='lines', line=dict(color=quadrant_colors[current_quad], width=2),
-                    name=f'{current_quad} - {analyzer.quadrant_descriptions[current_quad]}',
-                    showlegend=True, hovertemplate='<b>%{fullData.name}</b><br>' +
-                                                 'Date: %{x}<br>Price: $%{y:,.0f}<extra></extra>'
-                ))
-        
-        fig.update_layout(
-            title="Bitcoin Price with Quadrant Analysis (Last 3 Years)",
-            xaxis_title="Date", yaxis_title="BTC Price (USD)",
-            height=600, showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode='x unified'
-        )
-        
-        return fig
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure()
+            
+            quadrant_colors = {
+                'Q1': '#4CAF50', 'Q2': '#FF9800', 'Q3': '#F44336', 'Q4': '#2196F3'
+            }
+            
+            current_quad = None
+            segment_start = None
+            
+            for i, (date, row) in enumerate(btc_data.iterrows()):
+                quad = row['Primary_Quadrant']
+                if pd.isna(quad):
+                    continue
+                    
+                if quad != current_quad:
+                    if current_quad is not None and segment_start is not None:
+                        segment_data = btc_data.loc[segment_start:date]
+                        if len(segment_data) > 1:
+                            fig.add_trace(go.Scatter(
+                                x=segment_data.index, y=segment_data['BTC-USD'],
+                                mode='lines', line=dict(color=quadrant_colors[current_quad], width=2),
+                                name=f'{current_quad} - {analyzer.quadrant_descriptions[current_quad]}',
+                                showlegend=True, hovertemplate='<b>%{fullData.name}</b><br>' +
+                                                             'Date: %{x}<br>Price: $%{y:,.0f}<extra></extra>'
+                            ))
+                    
+                    current_quad = quad
+                    segment_start = date
+            
+            if current_quad is not None and segment_start is not None:
+                segment_data = btc_data.loc[segment_start:]
+                if len(segment_data) > 1:
+                    fig.add_trace(go.Scatter(
+                        x=segment_data.index, y=segment_data['BTC-USD'],
+                        mode='lines', line=dict(color=quadrant_colors[current_quad], width=2),
+                        name=f'{current_quad} - {analyzer.quadrant_descriptions[current_quad]}',
+                        showlegend=True, hovertemplate='<b>%{fullData.name}</b><br>' +
+                                                     'Date: %{x}<br>Price: $%{y:,.0f}<extra></extra>'
+                    ))
+            
+            fig.update_layout(
+                title="Bitcoin Price with Quadrant Analysis (Last 3 Years)",
+                xaxis_title="Date", yaxis_title="BTC Price (USD)",
+                height=600, showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hovermode='x unified'
+            )
+            
+            return fig
+        else:
+            # Fallback to basic line chart
+            st.subheader("Bitcoin Price (Last 3 Years)")
+            btc_chart_data = btc_data.set_index(btc_data.index)['BTC-USD']
+            st.line_chart(btc_chart_data)
+            
+            # Show current quadrant info
+            if not btc_data.empty:
+                latest_quad = btc_data['Primary_Quadrant'].iloc[-1]
+                if pd.notna(latest_quad):
+                    st.info(f"Current Quadrant: {latest_quad} - {analyzer.quadrant_descriptions[latest_quad]}")
+            return None
 
     def create_quadrant_scores_chart(daily_results):
         if daily_results is None:
-            return go.Figure()
+            return None
         
         last_30_days = daily_results.tail(30)
         
-        fig = go.Figure()
-        colors = ['#4CAF50', '#FF9800', '#F44336', '#2196F3']
-        
-        for i, quad in enumerate(['Q1', 'Q2', 'Q3', 'Q4']):
-            fig.add_trace(go.Scatter(
-                x=last_30_days.index, y=last_30_days[f'{quad}_Score'],
-                mode='lines+markers', name=f'{quad}', line=dict(color=colors[i], width=2),
-                hovertemplate=f'<b>{quad}</b><br>Date: %{{x}}<br>Score: %{{y:.2f}}<extra></extra>'
-            ))
-        
-        fig.update_layout(
-            title="Quadrant Scores - Last 30 Days", xaxis_title="Date", yaxis_title="Quadrant Score",
-            height=400, hovermode='x unified'
-        )
-        
-        return fig
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure()
+            colors = ['#4CAF50', '#FF9800', '#F44336', '#2196F3']
+            
+            for i, quad in enumerate(['Q1', 'Q2', 'Q3', 'Q4']):
+                fig.add_trace(go.Scatter(
+                    x=last_30_days.index, y=last_30_days[f'{quad}_Score'],
+                    mode='lines+markers', name=f'{quad}', line=dict(color=colors[i], width=2),
+                    hovertemplate=f'<b>{quad}</b><br>Date: %{{x}}<br>Score: %{{y:.2f}}<extra></extra>'
+                ))
+            
+            fig.update_layout(
+                title="Quadrant Scores - Last 30 Days", xaxis_title="Date", yaxis_title="Quadrant Score",
+                height=400, hovermode='x unified'
+            )
+            
+            return fig
+        else:
+            # Fallback to basic charts
+            st.subheader("Quadrant Scores - Last 30 Days")
+            chart_data = last_30_days[['Q1_Score', 'Q2_Score', 'Q3_Score', 'Q4_Score']]
+            st.line_chart(chart_data)
+            return None
 
     # Main content based on page selection
     if page == "Current Quadrant Analysis":
@@ -691,11 +722,13 @@ def main():
             
             with col1:
                 btc_chart = create_btc_quadrant_chart(price_data, daily_results, analyzer)
-                st.plotly_chart(btc_chart, use_container_width=True)
+                if PLOTLY_AVAILABLE and btc_chart:
+                    st.plotly_chart(btc_chart, use_container_width=True)
             
             with col2:
                 scores_chart = create_quadrant_scores_chart(daily_results)
-                st.plotly_chart(scores_chart, use_container_width=True)
+                if PLOTLY_AVAILABLE and scores_chart:
+                    st.plotly_chart(scores_chart, use_container_width=True)
             
             # 30-day table
             st.subheader("📈 Last 30 Days Detailed View")
@@ -751,19 +784,29 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                fig_ratio = px.bar(axe_data.head(10), x='symbol', y='ratio_vs_ma',
-                                  title="Top 10: Ratio vs 50-day MA", color='ratio_vs_ma',
-                                  color_continuous_scale='RdYlGn')
-                fig_ratio.update_layout(height=400)
-                st.plotly_chart(fig_ratio, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    fig_ratio = px.bar(axe_data.head(10), x='symbol', y='ratio_vs_ma',
+                                      title="Top 10: Ratio vs 50-day MA", color='ratio_vs_ma',
+                                      color_continuous_scale='RdYlGn')
+                    fig_ratio.update_layout(height=400)
+                    st.plotly_chart(fig_ratio, use_container_width=True)
+                else:
+                    st.subheader("Top 10: Ratio vs 50-day MA")
+                    chart_data = axe_data.head(10).set_index('symbol')['ratio_vs_ma']
+                    st.bar_chart(chart_data)
             
             with col2:
-                fig_returns = px.scatter(axe_data, x='week_return', y='month_return', 
-                                       size='market_cap', hover_name='name',
-                                       title="Risk/Return Profile", color='ratio_vs_ma',
-                                       color_continuous_scale='RdYlGn')
-                fig_returns.update_layout(height=400)
-                st.plotly_chart(fig_returns, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    fig_returns = px.scatter(axe_data, x='week_return', y='month_return', 
+                                           size='market_cap', hover_name='name',
+                                           title="Risk/Return Profile", color='ratio_vs_ma',
+                                           color_continuous_scale='RdYlGn')
+                    fig_returns.update_layout(height=400)
+                    st.plotly_chart(fig_returns, use_container_width=True)
+                else:
+                    st.subheader("Week vs Month Returns")
+                    chart_data = axe_data[['week_return', 'month_return']].head(10)
+                    st.scatter_chart(chart_data)
             
             # Detailed table
             st.subheader("🏆 Top Performers Detailed View")
