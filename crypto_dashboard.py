@@ -992,14 +992,19 @@ def main():
                 
                 with col1:
                     st.markdown("**Enhanced Risk Measures**")
+                    
+                    # Format values safely
+                    sortino_comparison = 'outperforms' if sortino_strategy > sortino_buyhold else 'underperforms'
+                    calmar_comparison = 'better' if calmar_strategy is not None and calmar_buyhold is not None and calmar_strategy > calmar_buyhold else 'similar'
+                    
                     st.markdown(f"""
                     **Sortino Ratio**: {sortino_strategy:.2f} vs {sortino_buyhold:.2f}
                     - Better than Sharpe as it only penalizes downside volatility
-                    - Higher is better (strategy {'outperforms' if sortino_strategy > sortino_buyhold else 'underperforms'})
+                    - Higher is better (strategy {sortino_comparison})
                     
-                    **Calmar Ratio**: {calmar_strategy:.2f if not np.isinf(calmar_strategy) else 'Excellent'} vs {calmar_buyhold:.2f if not np.isinf(calmar_buyhold) else 'Excellent'}
+                    **Calmar Ratio**: {calmar_str_strategy} vs {calmar_str_buyhold}
                     - Measures return per unit of maximum drawdown
-                    - Strategy provides {'better' if calmar_strategy is not None and calmar_buyhold is not None and calmar_strategy > calmar_buyhold else 'similar'} risk-adjusted returns
+                    - Strategy provides {calmar_comparison} risk-adjusted returns
                     """)
                 
                 with col2:
