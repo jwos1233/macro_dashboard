@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Crypto Macro Flow Dashboard - Final Working Version
-Complete dashboard with quadrant analysis and axe list generator
+Crypto Macro Flow Dashboard - Complete Working Version
 """
 
 import streamlit as st
@@ -621,55 +620,8 @@ def main():
     if not PLOTLY_AVAILABLE:
         st.warning("⚠️ **Plotly not available** - Using basic charts")
 
-    st.markdown("""
-    <style>
-        .main-header {
-            font-size: 2.5rem; font-weight: bold; color: #1E88E5;
-            text-align: center; margin-bottom: 2rem;
-        }
-        .quadrant-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem; border-radius: 10px; color: white;
-            text-align: center; margin: 0.5rem 0;
-        }
-    # Custom CSS styling
-    st.markdown("""
-    <style>
-        .main-header {
-            font-size: 2rem; 
-            font-weight: bold; 
-            color: #1E88E5;
-            text-align: center; 
-            margin-bottom: 2rem;
-        }
-        .quadrant-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem; 
-            border-radius: 10px; 
-            color: white;
-            text-align: center; 
-            margin: 0.5rem 0;
-        }
-        .metric-card {
-            background: #f8f9fa; 
-            padding: 1rem; 
-            border-radius: 8px;
-            border-left: 4px solid #1E88E5; 
-            margin: 0.5rem 0;
-        }
-        .sidebar-info {
-            background: #e3f2fd; 
-            padding: 1rem; 
-            border-radius: 8px; 
-            margin: 1rem 0;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
     # Sidebar
-    st.sidebar.markdown('<div class="sidebar-info">', unsafe_allow_html=True)
     st.sidebar.title("🎯 Dashboard Controls")
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
     # Navigation
     page = st.sidebar.selectbox("📊 Select Analysis", 
@@ -680,6 +632,7 @@ def main():
     lookback_days = st.sidebar.slider("Momentum Lookback (days)", 14, 50, 21)
     top_n_tokens = st.sidebar.slider("Top N Tokens for Axe List", 20, 100, 50)
 
+    # Data loading function
     # Data loading function
     def load_quadrant_data(lookback_days):
         if not YFINANCE_AVAILABLE:
@@ -719,7 +672,7 @@ def main():
 
     # Main content based on page selection
     if page == "Current Quadrant Analysis":
-        st.markdown('<h1 class="main-header">📊 Current Quadrant Analysis</h1>', unsafe_allow_html=True)
+        st.title("📊 Current Quadrant Analysis")
         
         if not YFINANCE_AVAILABLE:
             st.error("❌ Current Quadrant Analysis requires yfinance.")
@@ -737,13 +690,8 @@ def main():
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.markdown(f'''
-                <div class="quadrant-card">
-                    <h3>🎯 Current Quadrant</h3>
-                    <h1>{current_quadrant}</h1>
-                    <p>{analyzer.quadrant_descriptions[current_quadrant]}</p>
-                </div>
-                ''', unsafe_allow_html=True)
+                st.metric("🎯 Current Quadrant", current_quadrant)
+                st.write(analyzer.quadrant_descriptions[current_quadrant])
             
             with col2:
                 prev_score = last_30_days['Primary_Score'].iloc[-2]
@@ -781,7 +729,7 @@ def main():
             st.error("❌ Failed to load quadrant analysis data. Please check your internet connection.")
 
     elif page == "Axe List Generator":
-        st.markdown('<h1 class="main-header">🎯 Axe List Generator</h1>', unsafe_allow_html=True)
+        st.title("🎯 Axe List Generator")
         
         if st.button("🚀 Generate Axe List", type="primary"):
             try:
@@ -839,7 +787,7 @@ def main():
             st.dataframe(display_df.round(2), use_container_width=True)
 
     else:  # Combined Dashboard
-        st.markdown('<h1 class="main-header">🚀 Combined Macro Flow Dashboard</h1>', unsafe_allow_html=True)
+        st.title("🚀 Combined Macro Flow Dashboard")
         
         if YFINANCE_AVAILABLE:
             with st.spinner("Loading quadrant analysis..."):
@@ -854,52 +802,27 @@ def main():
             col1, col2, col3 = st.columns([1, 1, 1])
             
             with col1:
-                st.markdown(f'''
-                <div class="quadrant-card">
-                    <h4>Current Regime</h4>
-                    <h2>{current_quadrant}</h2>
-                    <p>{analyzer.quadrant_descriptions[current_quadrant]}</p>
-                </div>
-                ''', unsafe_allow_html=True)
+                st.metric("Current Regime", current_quadrant)
+                st.write(analyzer.quadrant_descriptions[current_quadrant])
             
             with col2:
                 if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
                     top_token = st.session_state['axe_data'].iloc[0]
-                    st.markdown(f'''
-                    <div class="metric-card">
-                        <h4>🏆 Top Axe</h4>
-                        <h3>{top_token['name']}</h3>
-                        <p>Ratio vs MA: {top_token['ratio_vs_ma']:+.1f}%</p>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    st.metric("🏆 Top Axe", top_token['name'])
+                    st.write(f"Ratio vs MA: {top_token['ratio_vs_ma']:+.1f}%")
                 else:
-                    st.markdown(f'''
-                    <div class="metric-card">
-                        <h4>🏆 Top Axe</h4>
-                        <h3>Run Analysis</h3>
-                        <p>Generate axe list first</p>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    st.metric("🏆 Top Axe", "Run Analysis")
+                    st.write("Generate axe list first")
             
             with col3:
                 if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
                     axe_data = st.session_state['axe_data']
                     outperforming = axe_data['token_outperforming'].sum()
-                    st.markdown(f'''
-                    <div class="metric-card">
-                        <h4>📊 Market Strength</h4>
-                        <h3>{outperforming}/{len(axe_data)}</h3>
-                        <p>Tokens outperforming baseline</p>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    st.metric("📊 Market Strength", f"{outperforming}/{len(axe_data)}")
+                    st.write("Tokens outperforming baseline")
                 else:
-                    st.markdown(f'''
-                    <div class="metric-card">
-                        <h4>📊 Market Strength</h4>
-                        <h3>-/-</h3>
-                        <p>Generate axe list first</p>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    st.metric("📊 Market Strength", "-/-")
+                    st.write("Generate axe list first")
             
             col1, col2 = st.columns([3, 2])
             
