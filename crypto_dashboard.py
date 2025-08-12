@@ -859,6 +859,11 @@ def main():
                 
                 with col2:
                     st.markdown("**Risk Analysis Summary**")
+                    
+                    # Format values safely
+                    calmar_str_strategy = f"{calmar_strategy:.2f}" if calmar_strategy is not None else "N/A"
+                    calmar_str_buyhold = f"{calmar_buyhold:.2f}" if calmar_buyhold is not None else "N/A"
+                    
                     st.markdown(f"""
                     **Best Month**: Strategy peaked at **{best_month_strategy:.1f}%** vs Buy & Hold **{best_month_buyhold:.1f}%**
                     
@@ -869,8 +874,8 @@ def main():
                     - Buy & Hold: **{sortino_buyhold:.2f}**
                     
                     **Calmar Ratio**: Annual return divided by max drawdown:
-                    - Strategy: **{calmar_strategy:.2f if calmar_strategy is not None else 'N/A'}**
-                    - Buy & Hold: **{calmar_buyhold:.2f if calmar_buyhold is not None else 'N/A'}**
+                    - Strategy: **{calmar_str_strategy}**
+                    - Buy & Hold: **{calmar_str_buyhold}**
                     """)
                 
                 # **3. Detailed Trading Statistics**
