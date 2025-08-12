@@ -1107,9 +1107,9 @@ def main():
             current_data = daily_results.tail(90).iloc[-1]
             current_quadrant = current_data['Primary_Quadrant']
             
-            # Calculate quick strategy performance
+            # Calculate strategy performance for 50/50 portfolio (live trading setup)
             strategy_analyzer = StrategyPerformanceAnalysis()
-            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results)
+            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results, 'PORTFOLIO', is_portfolio=True)
             
             col1, col2, col3 = st.columns([1, 1, 1])
             
@@ -1163,13 +1163,32 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
             
-            # Main charts - updated to use 90 days
+            # Main charts - updated to use 90 days and 50/50 portfolio
             col1, col2 = st.columns([3, 2])
             
             with col1:
-                if price_data is not None:
-                    st.subheader("Bitcoin Price Trend - Last 90 Days")
-                    st.line_chart(price_data['BTC-USD'].tail(90))
+                if price_data is not None and 'BTC-USD' in price_data.columns and 'ETH-USD' in price_data.columns:
+                    st.subheader("50/50 BTC+ETH Portfolio Price - Last 90 Days")
+                    
+                    # Create 50/50 portfolio for display
+                    btc_prices = price_data['BTC-USD'].tail(90)
+                    eth_prices = price_data['ETH-USD'].tail(90)
+                    
+                    # Normalize both to starting value and create 50/50 portfolio
+                    btc_normalized = (btc_prices / btc_prices.iloc[0] - 1) * 100
+                    eth_normalized = (eth_prices / eth_prices.iloc[0] - 1) * 100
+                    portfolio_returns = (btc_normalized + eth_normalized) / 2
+                    
+                    # Create DataFrame for chart
+                    portfolio_chart = pd.DataFrame({
+                        'Portfolio': portfolio_returns,
+                        'BTC': btc_normalized,
+                        'ETH': eth_normalized
+                    })
+                    
+                    st.line_chart(portfolio_chart)
+                else:
+                    st.info("Portfolio data loading...")
             
             with col2:
                 if performance_data and PLOTLY_AVAILABLE:
@@ -1177,16 +1196,17 @@ def main():
                     last_30_strategy = performance_data['strategy_metrics']['cumulative_series'].tail(30)
                     last_30_buyhold = performance_data['buyhold_metrics']['cumulative_series'].tail(30)
                     
+                    # Rebase to % from zero
                     chart_data = pd.DataFrame({
-                        'Strategy': (last_30_strategy.values - 1) * 100,
-                        'Buy & Hold': (last_30_buyhold.values - 1) * 100
+                        'Strategy': (last_30_strategy.values - last_30_strategy.iloc[0]) / last_30_strategy.iloc[0] * 100,
+                        'Buy & Hold': (last_30_buyhold.values - last_30_buyhold.iloc[0]) / last_30_buyhold.iloc[0] * 100
                     }, index=last_30_strategy.index)
                     
                     st.line_chart(chart_data)
                 else:
                     st.info("Strategy performance chart loading...")
             
-            # Quick stats - updated to use 90 days
+            # Quick stats - updated for 50/50 portfolio
             col1, col2 = st.columns(2)
             
             with col1:
@@ -1196,7 +1216,7 @@ def main():
                     st.bar_chart(recent_quads)
             
             with col2:
-                st.subheader("Strategy Key Stats")
+                st.subheader("50/50 Portfolio Strategy Stats")
                 if performance_data:
                     key_stats = pd.DataFrame({
                         'Metric': ['Total Return', 'Sharpe Ratio', 'Max Drawdown', 'Win Rate'],
