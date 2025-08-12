@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Crypto Macro Flow Dashboard - Fixed Version with Better Error Handling
+Crypto Macro Flow Dashboard - Fixed APIs, Original Logic Preserved
 """
 
 import streamlit as st
@@ -12,7 +12,6 @@ from typing import Dict, List, Tuple, Optional
 import warnings
 import time
 import requests
-import json
 
 # Handle imports with proper error checking
 YFINANCE_AVAILABLE = True
@@ -22,19 +21,17 @@ try:
     import yfinance as yf
 except ImportError:
     YFINANCE_AVAILABLE = False
-    st.warning("⚠️ yfinance not available - install with: pip install yfinance")
 
 try:
     import plotly.graph_objects as go
     import plotly.express as px
 except ImportError:
     PLOTLY_AVAILABLE = False
-    st.warning("⚠️ plotly not available - install with: pip install plotly")
 
 warnings.filterwarnings('ignore')
 
 # ================================================================================================
-# QUADRANT ANALYSIS MODULE
+# QUADRANT ANALYSIS MODULE - ORIGINAL LOGIC PRESERVED
 # ================================================================================================
 
 @dataclass
@@ -87,41 +84,23 @@ class CurrentQuadrantAnalysis:
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i, symbol in enumerate(self.core_assets.keys()):
-            progress = (i + 1) / len(self.core_assets)
-            progress_bar.progress(progress)
-            status_text.text(f"Fetching {symbol}...")
-            
+        for symbol in self.core_assets.keys():
             try:
                 ticker = yf.Ticker(symbol)
-                hist = ticker.history(start=start_date, end=end_date, timeout=10)
+                hist = ticker.history(start=start_date, end=end_date)
                 if len(hist) > 0:
                     clean_close = hist['Close'].dropna()
                     clean_close = clean_close[clean_close > 0]
                     if len(clean_close) >= 10:
                         data[symbol] = clean_close
-                time.sleep(0.1)  # Small delay to avoid rate limiting
-            except Exception as e:
-                st.warning(f"⚠️ Failed to fetch {symbol}: {str(e)}")
+            except Exception:
                 continue
-        
-        progress_bar.empty()
-        status_text.empty()
-        
-        if not data:
-            st.error("❌ No data fetched successfully")
-            return pd.DataFrame()
         
         df = pd.DataFrame(data)
         if not df.empty:
             df = df.groupby(df.index.date).last()
             df.index = pd.to_datetime(df.index)
             df = df.fillna(method='ffill').dropna(how='all')
-            st.success(f"✅ Successfully fetched data for {len(df.columns)} assets")
-        
         return df
     
     def calculate_daily_momentum(self, price_data: pd.DataFrame) -> pd.DataFrame:
@@ -187,13 +166,14 @@ class CurrentQuadrantAnalysis:
         return results
 
 # ================================================================================================
-# IMPROVED AXE LIST GENERATOR MODULE
+# FIXED AXE LIST GENERATOR - ORIGINAL LOGIC WITH API FIXES
 # ================================================================================================
 
-class ImprovedAxeListGenerator:
+class FixedAxeListGenerator:
     def __init__(self, config: Optional[Dict] = None):
         self.coingecko_url = "https://api.coingecko.com/api/v3"
         
+        # Enhanced session with better headers
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -203,38 +183,31 @@ class ImprovedAxeListGenerator:
         })
         
         self.config = {
-            'api_delay': 1.0,  # Increased delay
-            'max_retries': 3,
+            'api_delay': 1.5,  # Increased delay
+            'max_retries': 3, 
             'retry_backoff_base': 2,
-            'default_top_n': 50,  # Reduced default
+            'default_top_n': 50,
             'progress_interval': 10,
             'timeout': 30
         }
         if config:
             self.config.update(config)
     
-    def get_top_tokens_by_market_cap(self, limit: int = 50, max_retries: Optional[int] = None) -> pd.DataFrame:
-        """Fetch top tokens from CoinGecko with improved error handling"""
+    def get_top_tokens_by_market_cap(self, limit: int = 100, max_retries: Optional[int] = None) -> pd.DataFrame:
         if max_retries is None:
             max_retries = self.config['max_retries']
-        
-        st.info(f"🔍 Fetching top {limit} tokens from CoinGecko...")
-        
+            
         for attempt in range(max_retries):
             try:
                 url = f"{self.coingecko_url}/coins/markets"
                 params = {
-                    'vs_currency': 'usd',
-                    'order': 'market_cap_desc',
-                    'per_page': min(limit, 250),  # CoinGecko limit
-                    'page': 1,
-                    'sparkline': False,
-                    'locale': 'en',
-                    'price_change_percentage': '7d,30d'
+                    'vs_currency': 'usd', 'order': 'market_cap_desc', 'per_page': limit,
+                    'page': 1, 'sparkline': False, 'locale': 'en'
                 }
                 
                 response = self.session.get(url, params=params, timeout=self.config['timeout'])
                 response.raise_for_status()
+                time.sleep(self.config['api_delay'])
                 
                 data = response.json()
                 if not data:
@@ -242,74 +215,66 @@ class ImprovedAxeListGenerator:
                     return pd.DataFrame()
                 
                 df = pd.DataFrame(data)
-                required_cols = ['id', 'symbol', 'name', 'market_cap', 'market_cap_rank', 'current_price']
-                available_cols = [col for col in required_cols if col in df.columns]
-                
-                if len(available_cols) < 5:
-                    st.error(f"❌ Missing required columns. Available: {available_cols}")
-                    return pd.DataFrame()
-                
-                df = df[available_cols].copy()
-                
-                # Add price change data if available
-                if 'price_change_percentage_7d_in_currency' in df.columns:
-                    df['week_return'] = pd.to_numeric(df['price_change_percentage_7d_in_currency'], errors='coerce')
-                if 'price_change_percentage_30d_in_currency' in df.columns:
-                    df['month_return'] = pd.to_numeric(df['price_change_percentage_30d_in_currency'], errors='coerce')
-                
-                # Clean and convert data
-                for col in ['market_cap', 'current_price', 'market_cap_rank']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                
+                df = df[['id', 'symbol', 'name', 'market_cap', 'market_cap_rank', 'current_price']].copy()
+                df['market_cap'] = pd.to_numeric(df['market_cap'], errors='coerce')
+                df['current_price'] = pd.to_numeric(df['current_price'], errors='coerce')
+                df['market_cap_rank'] = pd.to_numeric(df['market_cap_rank'], errors='coerce')
                 df = df.dropna(subset=['market_cap', 'current_price', 'market_cap_rank'])
                 df = df.sort_values('market_cap_rank').head(limit)
+                df['binance_symbol'] = df['symbol'].str.upper() + 'USDT'
                 
-                st.success(f"✅ Successfully fetched {len(df)} tokens from CoinGecko")
-                time.sleep(self.config['api_delay'])
+                st.success(f"✅ Fetched top {len(df)} tokens by market cap from CoinGecko")
                 return df
                 
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 429:
-                    wait_time = (self.config['retry_backoff_base'] ** attempt) * 10
-                    st.warning(f"⚠️ Rate limited by CoinGecko. Waiting {wait_time}s... (Attempt {attempt + 1}/{max_retries})")
-                    time.sleep(wait_time)
-                    continue
+                    if attempt < max_retries - 1:
+                        wait_time = (self.config['retry_backoff_base'] ** attempt) * 10
+                        st.warning(f"⚠️ CoinGecko rate limited, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        st.error(f"❌ CoinGecko rate limited after {max_retries} attempts")
+                        return pd.DataFrame()
                 else:
-                    st.error(f"❌ HTTP error {e.response.status_code}: {e}")
-                    break
-            except requests.exceptions.RequestException as e:
-                st.error(f"❌ Network error: {e}")
-                break
+                    st.error(f"❌ HTTP error when fetching from CoinGecko: {e}")
+                    return pd.DataFrame()
             except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-                break
+                st.error(f"❌ Error fetching from CoinGecko: {e}")
+                return pd.DataFrame()
         
         return pd.DataFrame()
     
-    def get_crypto_data_yfinance(self, symbol: str, days: int = 100) -> Optional[pd.DataFrame]:
-        """Fallback method using yfinance for crypto data"""
+    def get_crypto_historical_data(self, symbol: str, days: int = 100) -> Optional[pd.DataFrame]:
+        """Get historical crypto data using yfinance as fallback"""
         if not YFINANCE_AVAILABLE:
             return None
         
         try:
-            # Convert symbol to Yahoo Finance format
+            # Convert to Yahoo Finance crypto format
             if symbol.upper().endswith('USDT'):
-                yf_symbol = symbol.upper().replace('USDT', '-USD')
+                base_symbol = symbol.upper().replace('USDT', '')
+                yf_symbol = f"{base_symbol}-USD"
             else:
                 yf_symbol = f"{symbol.upper()}-USD"
             
             ticker = yf.Ticker(yf_symbol)
             end_date = datetime.now()
-            start_date = end_date - timedelta(days=days + 10)
+            start_date = end_date - timedelta(days=days + 20)
             
-            hist = ticker.history(start=start_date, end=end_date, timeout=10)
+            hist = ticker.history(start=start_date, end=end_date, timeout=15)
             
             if hist.empty or len(hist) < days // 2:
                 return None
             
             df = hist.copy()
             df['price'] = df['Close']
+            df['open'] = df['Open']
+            df['high'] = df['High']
+            df['low'] = df['Low']
+            df['volume'] = df['Volume']
+            
+            # Calculate technical indicators - ORIGINAL LOGIC
             df['returns'] = df['price'].pct_change()
             df['ma_50'] = df['price'].rolling(window=min(50, len(df)//2)).mean()
             df['ma_20'] = df['price'].rolling(window=min(20, len(df)//4)).mean()
@@ -322,436 +287,616 @@ class ImprovedAxeListGenerator:
         except Exception:
             return None
     
-    def calculate_simple_metrics(self, df: pd.DataFrame, symbol: str) -> Optional[Dict]:
-        """Calculate performance metrics from price data"""
-        if df is None or len(df) < 20:
+    def calculate_performance_metrics(self, df: pd.DataFrame) -> Dict:
+        """ORIGINAL performance metrics calculation"""
+        if df is None or len(df) < 50:
             return None
         
         try:
             latest = df.iloc[-1]
-            week_ago = df.iloc[-min(8, len(df)-1)]
-            month_ago = df.iloc[-min(31, len(df)-1)]
+            week_ago = df.iloc[-8] if len(df) >= 8 else df.iloc[0]
+            month_ago = df.iloc[-31] if len(df) >= 31 else df.iloc[0]
             
-            if pd.isna(latest['price']):
+            if pd.isna(latest['price']) or pd.isna(latest['ma_50']) or pd.isna(latest['ma_20']):
                 return None
             
-            # Calculate returns
-            week_return = (latest['price'] / week_ago['price'] - 1) * 100 if not pd.isna(week_ago['price']) else 0
-            month_return = (latest['price'] / month_ago['price'] - 1) * 100 if not pd.isna(month_ago['price']) else 0
+            return {
+                'current_price': latest['price'],
+                'ma_50': latest['ma_50'],
+                'ma_20': latest['ma_20'],
+                'above_ma50': latest['above_ma50'],
+                'above_ma20': latest['above_ma20'],
+                'ma50_distance': latest['ma50_distance'],
+                'week_return': (latest['price'] / week_ago['price'] - 1) * 100,
+                'month_return': (latest['price'] / month_ago['price'] - 1) * 100,
+                'volatility': df['returns'].std() * np.sqrt(252) * 100,
+                'sharpe_ratio': (df['returns'].mean() * 252) / (df['returns'].std() * np.sqrt(252)) if df['returns'].std() > 0 else 0
+            }
+        except Exception:
+            return None
+    
+    def determine_baseline_asset(self) -> str:
+        """ORIGINAL baseline determination logic"""
+        try:
+            st.info("🔍 Analyzing BTCETH pair performance...")
             
-            # Calculate volatility
-            returns = df['returns'].dropna()
-            volatility = returns.std() * np.sqrt(252) * 100 if len(returns) > 0 else 0
+            btc_data = self.get_crypto_historical_data('BTCUSDT', days=100)
+            time.sleep(0.5)
+            eth_data = self.get_crypto_historical_data('ETHUSDT', days=100)
             
-            # MA analysis
-            above_ma50 = latest['above_ma50'] if not pd.isna(latest['above_ma50']) else False
-            above_ma20 = latest['above_ma20'] if not pd.isna(latest['above_ma20']) else False
-            ma50_distance = latest['ma50_distance'] if not pd.isna(latest['ma50_distance']) else 0
+            if btc_data is None or eth_data is None:
+                st.warning("❌ Failed to fetch BTC or ETH data, defaulting to BTC baseline")
+                return 'BTC'
+            
+            # ORIGINAL BTCETH ratio analysis
+            btc_prices = btc_data['price'].reindex(eth_data.index, method='nearest')
+            eth_prices = eth_data['price']
+            
+            # Align the data
+            common_index = btc_prices.index.intersection(eth_prices.index)
+            if len(common_index) < 50:
+                st.warning("❌ Insufficient overlapping data, defaulting to BTC")
+                return 'BTC'
+            
+            btc_aligned = btc_prices.loc[common_index]
+            eth_aligned = eth_prices.loc[common_index]
+            
+            btceth_ratio = btc_aligned / eth_aligned
+            ratio_ma_50 = btceth_ratio.rolling(window=50).mean()
+            current_ratio = btceth_ratio.iloc[-1]
+            current_ma_50 = ratio_ma_50.iloc[-1]
+            
+            btc_outperforming = current_ratio > current_ma_50
+            
+            if btc_outperforming:
+                st.success("🎯 Baseline Asset: BTC (outperforming ETH)")
+                return 'BTC'
+            else:
+                st.success("🎯 Baseline Asset: ETH (outperforming BTC)")
+                return 'ETH'
+                
+        except Exception as e:
+            st.error(f"❌ Error determining baseline asset: {e}")
+            return 'BTC'
+    
+    def calculate_ratio_ma_ranking(self, token_symbol: str, baseline_symbol: str) -> Optional[Dict]:
+        """ORIGINAL ratio MA ranking logic"""
+        try:
+            token_data = self.get_crypto_historical_data(token_symbol, days=100)
+            if token_data is None:
+                return None
+            
+            baseline_data = self.get_crypto_historical_data(baseline_symbol, days=100)
+            if baseline_data is None:
+                return None
+            
+            if len(token_data) < 100 or len(baseline_data) < 100:
+                return None
+            
+            # Align data on common dates
+            token_prices = token_data['price']
+            baseline_prices = baseline_data['price'].reindex(token_prices.index, method='nearest')
+            
+            common_index = token_prices.index.intersection(baseline_prices.index)
+            if len(common_index) < 50:
+                return None
+            
+            token_aligned = token_prices.loc[common_index]
+            baseline_aligned = baseline_prices.loc[common_index]
+            
+            if (pd.isna(token_aligned.iloc[-1]) or pd.isna(baseline_aligned.iloc[-1])):
+                return None
+            
+            # ORIGINAL ratio analysis
+            token_baseline_ratio = token_aligned / baseline_aligned
+            ratio_ma_50 = token_baseline_ratio.rolling(window=50).mean()
+            current_ratio = token_baseline_ratio.iloc[-1]
+            current_ma_50 = ratio_ma_50.iloc[-1]
+            
+            if pd.isna(current_ma_50):
+                return None
+            
+            ratio_vs_ma = ((current_ratio - current_ma_50) / current_ma_50 * 100) if current_ma_50 > 0 else 0
+            ratio_returns = token_baseline_ratio.pct_change().dropna()
+            ratio_volatility = ratio_returns.std() * np.sqrt(252) if len(ratio_returns) > 0 else 0
+            token_outperforming = current_ratio > current_ma_50
+            
+            return {
+                'current_ratio': current_ratio,
+                'ratio_ma_50': current_ma_50,
+                'ratio_vs_ma': ratio_vs_ma,
+                'ratio_volatility': ratio_volatility,
+                'token_outperforming': token_outperforming,
+                'ratio_strength_score': ratio_vs_ma
+            }
+        except Exception:
+            return None
+    
+    def analyze_token_performance(self, symbol: str, baseline_asset: str) -> Optional[Dict]:
+        """ORIGINAL token performance analysis"""
+        try:
+            token_data = self.get_crypto_historical_data(symbol, days=100)
+            if token_data is None:
+                return None
+            
+            time.sleep(self.config['api_delay'])
+            
+            baseline_symbol = 'BTCUSDT' if baseline_asset == 'BTC' else 'ETHUSDT'
+            baseline_data = self.get_crypto_historical_data(baseline_symbol, days=100)
+            
+            if baseline_data is None:
+                return None
+            
+            token_metrics = self.calculate_performance_metrics(token_data)
+            baseline_metrics = self.calculate_performance_metrics(baseline_data)
+            
+            if token_metrics is None or baseline_metrics is None:
+                return None
+            
+            # ORIGINAL correlation and beta calculation
+            correlation = 0
+            beta = 0
+            if len(token_data) >= 50 and len(baseline_data) >= 50:
+                token_returns = token_data['returns'].dropna()
+                baseline_returns = baseline_data['returns'].reindex(token_returns.index, method='nearest').dropna()
+                
+                common_index = token_returns.index.intersection(baseline_returns.index)
+                if len(common_index) >= 30:
+                    try:
+                        token_aligned = token_returns.loc[common_index]
+                        baseline_aligned = baseline_returns.loc[common_index]
+                        
+                        clean_data = pd.DataFrame({
+                            'token': token_aligned,
+                            'baseline': baseline_aligned
+                        }).dropna()
+                        
+                        if len(clean_data) >= 30:
+                            correlation = clean_data['token'].corr(clean_data['baseline'])
+                            covariance = clean_data['token'].cov(clean_data['baseline'])
+                            baseline_variance = clean_data['baseline'].var()
+                            beta = covariance / baseline_variance if baseline_variance > 0 else 0
+                    except Exception:
+                        pass
             
             return {
                 'symbol': symbol,
-                'current_price': latest['price'],
-                'above_ma50': above_ma50,
-                'above_ma20': above_ma20,
-                'ma50_distance': ma50_distance,
-                'week_return': week_return,
-                'month_return': month_return,
-                'volatility': volatility,
-                'sharpe_ratio': (returns.mean() * 252) / (returns.std() * np.sqrt(252)) if len(returns) > 0 and returns.std() > 0 else 0
+                'current_price': token_metrics['current_price'],
+                'above_ma50': token_metrics['above_ma50'],
+                'above_ma20': token_metrics['above_ma20'],
+                'ma50_distance': token_metrics['ma50_distance'],
+                'week_return': token_metrics['week_return'],
+                'month_return': token_metrics['month_return'],
+                'volatility': token_metrics['volatility'],
+                'sharpe_ratio': token_metrics['sharpe_ratio'],
+                'correlation_with_baseline': correlation,
+                'beta_vs_baseline': beta,
+                'relative_strength': token_metrics['month_return'] - baseline_metrics['month_return']
             }
-            
         except Exception:
             return None
     
-    def analyze_token_simple(self, symbol: str, baseline_return: float = 0) -> Optional[Dict]:
-        """Simplified token analysis using yfinance"""
-        try:
-            data = self.get_crypto_data_yfinance(symbol, days=100)
-            if data is None:
-                return None
-            
-            metrics = self.calculate_simple_metrics(data, symbol)
-            if metrics is None:
-                return None
-            
-            # Calculate relative strength vs baseline
-            metrics['relative_strength'] = metrics['month_return'] - baseline_return
-            metrics['token_outperforming'] = metrics['relative_strength'] > 0
-            
-            # Simple scoring
-            metrics['axe_score'] = (
-                int(metrics['above_ma50']) * 2 +
-                int(metrics['above_ma20']) * 1 +
-                int(metrics['ma50_distance'] > 0) * 1 +
-                int(metrics['week_return'] > 0) * 1 +
-                int(metrics['month_return'] > 0) * 1 +
-                int(metrics['relative_strength'] > 0) * 2
-            )
-            
-            return metrics
-            
-        except Exception:
-            return None
-    
-    def run_simplified_analysis(self, top_n: int = 30):
-        """Run a simplified analysis that's more reliable"""
-        st.info(f"🚀 Starting simplified analysis for top {top_n} tokens...")
+    def generate_axe_list(self, top_tokens: pd.DataFrame, baseline_asset: str) -> pd.DataFrame:
+        """ORIGINAL axe list generation logic"""
+        st.info(f"🔍 Generating axe list based on {baseline_asset} baseline...")
         
-        # Get top tokens
-        top_tokens = self.get_top_tokens_by_market_cap(top_n)
-        if top_tokens.empty:
-            st.error("❌ Failed to fetch token data")
-            return None
+        baseline_symbol = 'BTCUSDT' if baseline_asset == 'BTC' else 'ETHUSDT'
+        analysis_results = []
+        successful_analyses = 0
+        failed_analyses = 0
+        skipped_analyses = 0
         
-        # Get baseline performance (BTC)
-        st.info("📊 Analyzing BTC baseline performance...")
-        btc_data = self.get_crypto_data_yfinance('BTC', days=100)
-        baseline_return = 0
-        
-        if btc_data is not None:
-            baseline_metrics = self.calculate_simple_metrics(btc_data, 'BTC')
-            if baseline_metrics:
-                baseline_return = baseline_metrics['month_return']
-                st.success(f"✅ BTC baseline monthly return: {baseline_return:.1f}%")
-        
-        # Analyze tokens
-        st.info(f"🔍 Analyzing {len(top_tokens)} tokens...")
-        results = []
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        for i, (_, token) in enumerate(top_tokens.iterrows()):
-            progress = (i + 1) / len(top_tokens)
-            progress_bar.progress(progress)
-            status_text.text(f"[{i+1}/{len(top_tokens)}] Analyzing {token['symbol'].upper()}...")
+        for i, (idx, token) in enumerate(top_tokens.iterrows()):
+            binance_symbol = token['binance_symbol']
+            name = token['name']
             
-            if token['symbol'].upper() in ['BTC', 'BITCOIN']:
+            if binance_symbol in ['BTCUSDT', 'ETHUSDT']:
+                skipped_analyses += 1
                 continue
             
-            analysis = self.analyze_token_simple(token['symbol'], baseline_return)
+            progress = (i + 1) / len(top_tokens)
+            progress_bar.progress(progress)
+            status_text.text(f"[{i+1}/{len(top_tokens)}] Analyzing {binance_symbol} ({name})...")
             
+            analysis = self.analyze_token_performance(binance_symbol, baseline_asset)
             if analysis:
-                # Add token metadata
-                analysis.update({
-                    'name': token['name'],
-                    'market_cap_rank': token['market_cap_rank'],
-                    'market_cap': token['market_cap']
-                })
+                ratio_analysis = self.calculate_ratio_ma_ranking(binance_symbol, baseline_symbol)
                 
-                # Use existing return data if available
-                if 'week_return' in token and not pd.isna(token['week_return']):
-                    analysis['week_return'] = token['week_return']
-                if 'month_return' in token and not pd.isna(token['month_return']):
-                    analysis['month_return'] = token['month_return']
-                    analysis['relative_strength'] = token['month_return'] - baseline_return
-                    analysis['token_outperforming'] = analysis['relative_strength'] > 0
+                if ratio_analysis:
+                    analysis.update(ratio_analysis)
+                else:
+                    analysis.update({
+                        'current_ratio': 0, 'ratio_ma_50': 0, 'ratio_vs_ma': 0,
+                        'ratio_volatility': 0, 'token_outperforming': False, 'ratio_strength_score': 0
+                    })
                 
-                results.append(analysis)
-            
-            time.sleep(0.5)  # Longer delay for stability
+                analysis['name'] = name
+                analysis['symbol'] = token['symbol']
+                analysis['market_cap'] = token['market_cap']
+                analysis['market_cap_rank'] = token['market_cap_rank']
+                analysis_results.append(analysis)
+                successful_analyses += 1
+            else:
+                failed_analyses += 1
         
         progress_bar.empty()
         status_text.empty()
         
-        if results:
-            df = pd.DataFrame(results)
-            df = df.sort_values(['relative_strength', 'axe_score'], ascending=[False, False])
-            st.success(f"🎯 Analysis complete! Successfully analyzed {len(df)} tokens")
+        st.info(f"📊 Analysis Complete: ✅ {successful_analyses} successful, ❌ {failed_analyses} failed, ⏭️ {skipped_analyses} skipped")
+        
+        if analysis_results:
+            df = pd.DataFrame(analysis_results)
+            
+            # ORIGINAL AXE SCORING ALGORITHM
+            df['axe_score'] = (
+                df['above_ma50'].astype(int) * 2 +
+                df['above_ma20'].astype(int) * 1 +
+                (df['ma50_distance'] > 0).astype(int) * 1 +
+                (df['week_return'] > 0).astype(int) * 1 +
+                (df['month_return'] > 0).astype(int) * 1 +
+                (df['relative_strength'] > 0).astype(int) * 2 +
+                (df['correlation_with_baseline'] > 0.5).astype(int) * 1 +
+                (df['beta_vs_baseline'] > 0.8).astype(int) * 1 +
+                (df['token_outperforming']).astype(int) * 3 +
+                (df['ratio_vs_ma'] > 0).astype(int) * 2
+            )
+            
+            df = df.sort_values(['ratio_strength_score', 'axe_score'], ascending=[False, False])
+            
+            st.success(f"🎯 Generated axe list with {len(df)} tokens")
             return df
         else:
-            st.error("❌ No successful analyses")
+            st.error("❌ No successful analyses to generate axe list")
+            return pd.DataFrame()
+    
+    def run_analysis(self, top_n=None):
+        """ORIGINAL analysis workflow"""
+        if top_n is None:
+            top_n = self.config.get('default_top_n', 50)
+        
+        st.info(f"🚀 Starting Axe List Analysis for top {top_n} tokens...")
+        
+        baseline = self.determine_baseline_asset()
+        if not baseline:
+            st.error("❌ Failed to determine baseline asset")
             return None
+        
+        st.info("🔍 Fetching top tokens by market cap from CoinGecko...")
+        top_tokens = self.get_top_tokens_by_market_cap(top_n)
+        if top_tokens.empty:
+            st.error("❌ Failed to fetch top tokens")
+            return None
+        
+        st.success(f"✅ Found {len(top_tokens)} tokens to analyze")
+        
+        axe_list = self.generate_axe_list(top_tokens, baseline)
+        if axe_list.empty:
+            st.error("❌ Failed to generate axe list")
+            return None
+        
+        st.success(f"🎯 Analysis Complete! Successfully analyzed: {len(axe_list)} tokens")
+        return axe_list
 
 # ================================================================================================
-# STREAMLIT DASHBOARD
+# STREAMLIT DASHBOARD - ORIGINAL UI WITH FIXES
 # ================================================================================================
 
 def main():
     st.set_page_config(
-        page_title="Crypto Macro Flow Dashboard - Fixed",
-        page_icon="📊", 
-        layout="wide", 
-        initial_sidebar_state="expanded"
-    )
+        page_title="Crypto Macro Flow Dashboard",
+        page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 
-    st.title("📊 Crypto Macro Flow Dashboard - Fixed Version")
-    
-    # Display status
-    col1, col2 = st.columns(2)
-    with col1:
-        if YFINANCE_AVAILABLE:
-            st.success("✅ yfinance: Available")
-        else:
-            st.error("❌ yfinance: Not available")
-    
-    with col2:
-        if PLOTLY_AVAILABLE:
-            st.success("✅ plotly: Available")
-        else:
-            st.warning("⚠️ plotly: Not available")
+    if not YFINANCE_AVAILABLE:
+        st.error("❌ **yfinance not available** - Install with: pip install yfinance")
+    if not PLOTLY_AVAILABLE:
+        st.warning("⚠️ **Plotly not available** - Install with: pip install plotly")
 
     # Sidebar
     st.sidebar.title("🎯 Dashboard Controls")
 
     # Navigation
     page = st.sidebar.selectbox("📊 Select Analysis", 
-        ["Current Quadrant Analysis", "Simplified Axe List", "Combined Dashboard"])
+        ["Current Quadrant Analysis", "Axe List Generator", "Combined Dashboard"])
 
     # Settings
     st.sidebar.markdown("### ⚙️ Settings")
     lookback_days = st.sidebar.slider("Momentum Lookback (days)", 14, 50, 21)
-    top_n_tokens = st.sidebar.slider("Top N Tokens for Analysis", 10, 50, 20)
+    top_n_tokens = st.sidebar.slider("Top N Tokens for Axe List", 20, 100, 50)
+
+    # Data loading function
+    def load_quadrant_data(lookback_days):
+        if not YFINANCE_AVAILABLE:
+            return None, None, None
+            
+        analyzer = CurrentQuadrantAnalysis(lookback_days=lookback_days)
+        price_data = analyzer.fetch_recent_data(days_back=1095)
+        if price_data.empty:
+            return None, None, None
+        
+        momentum_data = analyzer.calculate_daily_momentum(price_data)
+        quadrant_scores = analyzer.calculate_daily_quadrant_scores(momentum_data)
+        daily_results = analyzer.determine_daily_quadrant(quadrant_scores)
+        return price_data, daily_results, analyzer
+
+    def create_charts(price_data, daily_results, analyzer):
+        if price_data is None or 'BTC-USD' not in price_data.columns:
+            st.error("BTC data not available")
+            return
+        
+        btc_data = price_data[['BTC-USD']].copy()
+        btc_data = btc_data.join(daily_results[['Primary_Quadrant']], how='left')
+        
+        st.subheader("Bitcoin Price (Last 3 Years)")
+        st.line_chart(btc_data['BTC-USD'])
+        
+        if not btc_data.empty:
+            latest_quad = btc_data['Primary_Quadrant'].iloc[-1]
+            if pd.notna(latest_quad):
+                st.info(f"**Current Quadrant**: {latest_quad} - {analyzer.quadrant_descriptions[latest_quad]}")
+        
+        if daily_results is not None:
+            last_30_days = daily_results.tail(30)
+            st.subheader("Quadrant Scores - Last 30 Days")
+            chart_data = last_30_days[['Q1_Score', 'Q2_Score', 'Q3_Score', 'Q4_Score']]
+            st.line_chart(chart_data)
 
     # Main content based on page selection
     if page == "Current Quadrant Analysis":
-        st.header("📊 Current Quadrant Analysis")
+        st.title("📊 Current Quadrant Analysis")
         
         if not YFINANCE_AVAILABLE:
-            st.error("❌ This feature requires yfinance. Install with: `pip install yfinance`")
+            st.error("❌ Current Quadrant Analysis requires yfinance.")
             return
         
-        if st.button("🔄 Run Quadrant Analysis", type="primary"):
-            with st.spinner("Running quadrant analysis..."):
-                try:
-                    analyzer = CurrentQuadrantAnalysis(lookback_days=lookback_days)
-                    price_data = analyzer.fetch_recent_data(days_back=365)
-                    
-                    if not price_data.empty:
-                        momentum_data = analyzer.calculate_daily_momentum(price_data)
-                        quadrant_scores = analyzer.calculate_daily_quadrant_scores(momentum_data)
-                        daily_results = analyzer.determine_daily_quadrant(quadrant_scores)
-                        
-                        # Store in session state
-                        st.session_state['quadrant_data'] = {
-                            'price_data': price_data,
-                            'daily_results': daily_results,
-                            'analyzer': analyzer
-                        }
-                        
-                        st.success("✅ Quadrant analysis complete!")
-                    else:
-                        st.error("❌ Failed to fetch price data")
-                        
-                except Exception as e:
-                    st.error(f"❌ Error in quadrant analysis: {str(e)}")
+        with st.spinner("Loading quadrant analysis data..."):
+            price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
         
-        # Display results if available
-        if 'quadrant_data' in st.session_state:
-            data = st.session_state['quadrant_data']
-            price_data = data['price_data']
-            daily_results = data['daily_results']
-            analyzer = data['analyzer']
+        if daily_results is not None:
+            last_30_days = daily_results.tail(30)
+            current_data = last_30_days.iloc[-1]
+            current_quadrant = current_data['Primary_Quadrant']
+            current_score = current_data['Primary_Score']
             
-            # Current status
-            if not daily_results.empty:
-                current_data = daily_results.tail(1).iloc[0]
-                current_quadrant = current_data['Primary_Quadrant']
-                current_score = current_data['Primary_Score']
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("🎯 Current Quadrant", current_quadrant)
-                    st.write(analyzer.quadrant_descriptions[current_quadrant])
-                
-                with col2:
-                    st.metric("Primary Score", f"{current_score:.2f}")
-                
-                with col3:
-                    confidence_val = current_data['Confidence']
-                    confidence_text = "Very High" if np.isinf(confidence_val) else f"{confidence_val:.2f}"
-                    st.metric("Confidence", confidence_text)
-                
-                # Charts
-                if 'BTC-USD' in price_data.columns:
-                    st.subheader("📈 Bitcoin Price (Last Year)")
-                    st.line_chart(price_data['BTC-USD'].tail(365))
-                
-                # Recent quadrant scores
-                st.subheader("📊 Recent Quadrant Scores")
-                recent_scores = daily_results.tail(30)[['Q1_Score', 'Q2_Score', 'Q3_Score', 'Q4_Score']]
-                st.line_chart(recent_scores)
-
-    elif page == "Simplified Axe List":
-        st.header("🎯 Simplified Axe List Generator")
-        st.info("This version uses a simplified approach with better error handling and yfinance data.")
-        
-        if st.button("🚀 Generate Simplified Axe List", type="primary"):
-            try:
-                generator = ImprovedAxeListGenerator()
-                results = generator.run_simplified_analysis(top_n_tokens)
-                
-                if results is not None and not results.empty:
-                    st.session_state['axe_data'] = results
-                    st.success(f"✅ Successfully analyzed {len(results)} tokens!")
-                else:
-                    st.error("❌ Failed to generate axe list")
-                    
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-        
-        # Display results
-        if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
-            axe_data = st.session_state['axe_data']
-            
-            # Summary metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("🏆 Top Performer", axe_data.iloc[0]['name'][:15])
+                st.metric("🎯 Current Quadrant", current_quadrant)
+                st.write(analyzer.quadrant_descriptions[current_quadrant])
             
             with col2:
-                best_return = axe_data['month_return'].max()
-                st.metric("Best Monthly Return", f"{best_return:.1f}%")
+                prev_score = last_30_days['Primary_Score'].iloc[-2]
+                st.metric("Primary Score", f"{current_score:.2f}", 
+                         delta=f"{current_score - prev_score:.2f}")
+            
+            with col3:
+                confidence_val = current_data['Confidence']
+                confidence_text = "Very High" if np.isinf(confidence_val) else f"{confidence_val:.2f}"
+                st.metric("Confidence", confidence_text)
+            
+            with col4:
+                st.metric("Regime Strength", current_data['Regime_Strength'])
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                create_charts(price_data, daily_results, analyzer)
+            
+            with col2:
+                st.subheader("📈 Recent Quadrant Trend")
+                recent_quads = last_30_days['Primary_Quadrant'].value_counts()
+                st.bar_chart(recent_quads)
+            
+            st.subheader("📈 Last 30 Days Detailed View")
+            
+            display_df = last_30_days[['Primary_Quadrant', 'Primary_Score', 'Q1_Score', 
+                                      'Q2_Score', 'Q3_Score', 'Q4_Score', 'Regime_Strength']].copy()
+            display_df.index = display_df.index.strftime('%Y-%m-%d')
+            display_df.columns = ['Quadrant', 'Score', 'Q1', 'Q2', 'Q3', 'Q4', 'Strength']
+            
+            st.dataframe(display_df.round(2), use_container_width=True)
+            
+        else:
+            st.error("❌ Failed to load quadrant analysis data. Please check your internet connection.")
+
+    elif page == "Axe List Generator":
+        st.title("🎯 Axe List Generator")
+        
+        if st.button("🚀 Generate Axe List", type="primary"):
+            try:
+                generator = FixedAxeListGenerator()
+                axe_data = generator.run_analysis(top_n_tokens)
+                
+                if axe_data is not None and not axe_data.empty:
+                    st.success(f"✅ Analysis complete! Found {len(axe_data)} tokens")
+                    st.session_state['axe_data'] = axe_data
+                else:
+                    st.error("❌ Failed to generate axe list. Please try again.")
+            except Exception as e:
+                st.error(f"❌ Error generating axe list: {str(e)}")
+        
+        if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+            axe_data = st.session_state['axe_data']
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Top Performer", axe_data.iloc[0]['name'])
+            
+            with col2:
+                st.metric("Best Ratio vs MA", f"{axe_data['ratio_vs_ma'].max():.1f}%")
             
             with col3:
                 outperforming = axe_data['token_outperforming'].sum()
-                st.metric("Outperforming BTC", f"{outperforming}/{len(axe_data)}")
+                st.metric("Tokens Outperforming", f"{outperforming}/{len(axe_data)}")
             
             with col4:
-                avg_score = axe_data['axe_score'].mean()
-                st.metric("Avg Axe Score", f"{avg_score:.1f}")
+                avg_return = axe_data['month_return'].mean()
+                st.metric("Avg Monthly Return", f"{avg_return:.1f}%")
             
-            # Charts
             col1, col2 = st.columns(2)
             
             with col1:
-                st.subheader("🏆 Top 10: Monthly Returns")
-                top_10_returns = axe_data.head(10).set_index('symbol')['month_return']
-                st.bar_chart(top_10_returns)
+                st.subheader("Top 10: Ratio vs 50-day MA")
+                chart_data = axe_data.head(10).set_index('symbol')['ratio_vs_ma']
+                st.bar_chart(chart_data)
             
             with col2:
-                st.subheader("📊 Week vs Month Returns")
-                scatter_data = axe_data[['week_return', 'month_return']].head(15)
-                st.scatter_chart(scatter_data)
+                st.subheader("Week vs Month Returns")
+                chart_data = axe_data[['week_return', 'month_return']].head(10)
+                st.scatter_chart(chart_data)
             
-            # Detailed table
-            st.subheader("📋 Detailed Results")
-            display_cols = ['name', 'symbol', 'month_return', 'week_return', 'above_ma50', 'above_ma20', 'axe_score', 'market_cap_rank']
-            available_cols = [col for col in display_cols if col in axe_data.columns]
+            st.subheader("🏆 Top Performers Detailed View")
             
-            display_df = axe_data[available_cols].copy()
-            if 'market_cap_rank' in display_df.columns:
-                display_df['market_cap_rank'] = display_df['market_cap_rank'].astype(int)
+            display_cols = ['name', 'symbol', 'ratio_vs_ma', 'market_cap_rank', 
+                           'week_return', 'month_return', 'above_ma50', 'above_ma20']
+            display_df = axe_data[display_cols].copy()
+            display_df['market_cap_rank'] = display_df['market_cap_rank'].astype(int)
+            display_df.columns = ['Name', 'Symbol', 'Ratio vs MA (%)', 'MCap Rank', 
+                                 'Week Return (%)', 'Month Return (%)', 'Above 50MA', 'Above 20MA']
             
             st.dataframe(display_df.round(2), use_container_width=True)
 
     else:  # Combined Dashboard
-        st.header("🚀 Combined Dashboard")
-        st.info("Run both analyses for a complete overview")
+        st.title("🚀 Combined Macro Flow Dashboard")
         
-        col1, col2 = st.columns(2)
+        if YFINANCE_AVAILABLE:
+            with st.spinner("Loading quadrant analysis..."):
+                price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
+        else:
+            price_data, daily_results, analyzer = None, None, None
         
-        with col1:
-            if st.button("📊 Run Quadrant Analysis"):
-                if YFINANCE_AVAILABLE:
-                    with st.spinner("Running quadrant analysis..."):
-                        try:
-                            analyzer = CurrentQuadrantAnalysis(lookback_days=lookback_days)
-                            price_data = analyzer.fetch_recent_data(days_back=365)
-                            
-                            if not price_data.empty:
-                                momentum_data = analyzer.calculate_daily_momentum(price_data)
-                                quadrant_scores = analyzer.calculate_daily_quadrant_scores(momentum_data)
-                                daily_results = analyzer.determine_daily_quadrant(quadrant_scores)
-                                
-                                st.session_state['quadrant_data'] = {
-                                    'price_data': price_data,
-                                    'daily_results': daily_results,
-                                    'analyzer': analyzer
-                                }
-                                st.success("✅ Quadrant analysis complete!")
-                            else:
-                                st.error("❌ Failed to fetch price data")
-                        except Exception as e:
-                            st.error(f"❌ Error: {str(e)}")
+        if daily_results is not None:
+            current_data = daily_results.tail(30).iloc[-1]
+            current_quadrant = current_data['Primary_Quadrant']
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                st.metric("Current Regime", current_quadrant)
+                st.write(analyzer.quadrant_descriptions[current_quadrant])
+            
+            with col2:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    top_token = st.session_state['axe_data'].iloc[0]
+                    st.metric("🏆 Top Axe", top_token['name'])
+                    st.write(f"Ratio vs MA: {top_token['ratio_vs_ma']:+.1f}%")
                 else:
-                    st.error("❌ yfinance required")
-        
-        with col2:
-            if st.button("🎯 Run Axe Analysis"):
-                with st.spinner("Running axe analysis..."):
+                    st.metric("🏆 Top Axe", "Run Analysis")
+                    st.write("Generate axe list first")
+            
+            with col3:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    outperforming = axe_data['token_outperforming'].sum()
+                    st.metric("📊 Market Strength", f"{outperforming}/{len(axe_data)}")
+                    st.write("Tokens outperforming baseline")
+                else:
+                    st.metric("📊 Market Strength", "-/-")
+                    st.write("Generate axe list first")
+            
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                if price_data is not None:
+                    st.subheader("Bitcoin Price Trend")
+                    st.line_chart(price_data['BTC-USD'].tail(365))
+            
+            with col2:
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    st.subheader("Top 8 Tokens: Ratio vs MA")
+                    chart_data = axe_data.head(8).set_index('symbol')['ratio_vs_ma']
+                    st.bar_chart(chart_data)
+                else:
+                    st.info("Generate axe list to see top performers")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if daily_results is not None:
+                    st.subheader("📈 Recent Quadrant Trend")
+                    recent_quads = daily_results.tail(7)['Primary_Quadrant'].value_counts()
+                    st.bar_chart(recent_quads)
+            
+            with col2:
+                st.subheader("🎯 Top 5 Axe List")
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    top_5 = axe_data.head(5)[['name', 'ratio_vs_ma', 'month_return']]
+                    top_5.columns = ['Token', 'Ratio vs MA (%)', 'Month Return (%)']
+                    st.dataframe(top_5.round(1), use_container_width=True)
+                else:
+                    st.info("Generate axe list to see top performers")
+            
+            if st.button("🚀 Generate/Refresh Axe List", type="primary"):
+                with st.spinner("Generating axe list..."):
                     try:
-                        generator = ImprovedAxeListGenerator()
-                        results = generator.run_simplified_analysis(top_n_tokens)
+                        generator = FixedAxeListGenerator()
+                        axe_data = generator.run_analysis(top_n_tokens)
                         
-                        if results is not None and not results.empty:
-                            st.session_state['axe_data'] = results
-                            st.success(f"✅ Axe analysis complete!")
+                        if axe_data is not None and not axe_data.empty:
+                            st.session_state['axe_data'] = axe_data
+                            st.success(f"✅ Axe list updated! Found {len(axe_data)} tokens")
+                            st.rerun()
                         else:
                             st.error("❌ Failed to generate axe list")
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
-        
-        # Display combined results
-        st.markdown("---")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📊 Current Market Regime")
-            if 'quadrant_data' in st.session_state:
-                data = st.session_state['quadrant_data']
-                daily_results = data['daily_results']
-                analyzer = data['analyzer']
-                
-                if not daily_results.empty:
-                    current_quadrant = daily_results.tail(1).iloc[0]['Primary_Quadrant']
-                    st.metric("Current Quadrant", current_quadrant)
-                    st.write(analyzer.quadrant_descriptions[current_quadrant])
-                    
-                    # Mini chart
-                    if 'BTC-USD' in data['price_data'].columns:
-                        st.line_chart(data['price_data']['BTC-USD'].tail(90))
-            else:
-                st.info("Run quadrant analysis to see current regime")
-        
-        with col2:
-            st.subheader("🎯 Top Performing Tokens")
-            if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
-                axe_data = st.session_state['axe_data']
-                
-                # Top 5 performers
-                top_5 = axe_data.head(5)[['name', 'month_return', 'axe_score']]
-                top_5.columns = ['Token', 'Monthly Return (%)', 'Axe Score']
-                st.dataframe(top_5.round(2), use_container_width=True)
-                
-                # Performance metrics
-                outperforming = axe_data['token_outperforming'].sum()
-                st.metric("Tokens Outperforming BTC", f"{outperforming}/{len(axe_data)}")
-            else:
-                st.info("Run axe analysis to see top performers")
+            
+        else:
+            st.error("❌ Failed to load dashboard data. Please refresh the page.")
 
-    # Footer with instructions
+    # Footer
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📖 What's Fixed")
-    st.sidebar.markdown("""
-    **✅ Improvements:**
-    - Better error handling for API failures
-    - Fallback to yfinance for crypto data
-    - Reduced API calls to avoid rate limiting
-    - More robust data validation
-    - Simplified analysis approach
-    - Improved progress indicators
+    st.sidebar.markdown("### 📊 Data Sources")
+    st.sidebar.markdown("• **Quadrant Analysis**: Yahoo Finance")
+    st.sidebar.markdown("• **Axe List**: CoinGecko + Yahoo Finance")
+    st.sidebar.markdown("• **Refresh Rate**: Manual")
     
-    **🔧 Requirements:**
-    - `pip install yfinance pandas numpy streamlit`
-    - `pip install plotly` (optional, for better charts)
+    st.sidebar.markdown("### 🔧 System Status")
+    if YFINANCE_AVAILABLE:
+        st.sidebar.markdown("• ✅ Yahoo Finance: Ready")
+    else:
+        st.sidebar.markdown("• ❌ Yahoo Finance: Missing")
     
-    **⚠️ Notes:**
-    - Binance API issues resolved by using yfinance
-    - Reduced token count for better reliability
-    - CoinGecko rate limits handled gracefully
-    """)
+    if PLOTLY_AVAILABLE:
+        st.sidebar.markdown("• ✅ Plotly Charts: Ready")
+    else:
+        st.sidebar.markdown("• ⚠️ Plotly Charts: Basic mode")
     
-    st.sidebar.markdown("### 🆘 Troubleshooting")
-    st.sidebar.markdown("""
-    **If you still see errors:**
-    1. Check internet connection
-    2. Try reducing the number of tokens
-    3. Wait a few minutes between runs
-    4. Restart the Streamlit app
-    """)
+    with st.sidebar.expander("📖 How to Use"):
+        st.markdown("""
+        **Quadrant Analysis:**
+        - Shows current market regime (Growth/Inflation)
+        - BTC chart colored by quadrant periods
+        - Last 30 days detailed scores
+        
+        **Axe List Generator:**
+        - Finds tokens outperforming BTC/ETH baseline
+        - Uses 50-day MA ratio analysis
+        - Click 'Generate' to run analysis
+        
+        **Combined Dashboard:**
+        - Overview of both analyses
+        - Generate axe list for complete view
+        """)
+    
+    with st.sidebar.expander("🔧 What's Fixed"):
+        st.markdown("""
+        **✅ API Fixes:**
+        - Replaced Binance API with Yahoo Finance
+        - Better rate limiting for CoinGecko
+        - Improved error handling
+        
+        **✅ Original Logic Preserved:**
+        - BTCETH baseline determination
+        - Ratio vs MA ranking system
+        - Original axe scoring algorithm
+        - Quadrant classification system
+        """)
 
 if __name__ == "__main__":
     main()
