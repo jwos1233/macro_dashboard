@@ -749,22 +749,25 @@ def main():
                     if PLOTLY_AVAILABLE and len(strategy_monthly) > 0:
                         fig_monthly = go.Figure()
                         
-                        fig_monthly.add_trace(go.Scatter(
-                            x=strategy_monthly.index,
+                        # Create month labels for better x-axis
+                        month_labels = [f"{date.strftime('%Y-%m')}" for date in strategy_monthly.index]
+                        
+                        # Strategy bars
+                        fig_monthly.add_trace(go.Bar(
+                            x=month_labels,
                             y=strategy_monthly.values,
-                            mode='lines+markers',
                             name='Strategy',
-                            line=dict(color='#00ff00', width=2),
-                            marker=dict(size=4)
+                            marker_color='#00ff00',
+                            opacity=0.8
                         ))
                         
-                        fig_monthly.add_trace(go.Scatter(
-                            x=buyhold_monthly.index,
+                        # Buy & Hold bars  
+                        fig_monthly.add_trace(go.Bar(
+                            x=month_labels,
                             y=buyhold_monthly.values,
-                            mode='lines+markers',
                             name='Buy & Hold',
-                            line=dict(color='#1f77b4', width=2),
-                            marker=dict(size=4)
+                            marker_color='#1f77b4',
+                            opacity=0.8
                         ))
                         
                         fig_monthly.update_layout(
@@ -772,7 +775,9 @@ def main():
                             xaxis_title="Month",
                             yaxis_title="Return (%)",
                             height=400,
-                            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+                            barmode='group',  # Group bars side by side
+                            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+                            xaxis=dict(tickangle=-45)  # Rotate month labels
                         )
                         
                         st.plotly_chart(fig_monthly, use_container_width=True)
@@ -835,14 +840,14 @@ def main():
                             f"{worst_month_strategy:.1f}",
                             f"{sortino_strategy:.2f}",
                             f"{(strategy_monthly > 0).sum()}/{len(strategy_monthly)}",
-                            f"{calmar_strategy:.2f}" if not np.isinf(calmar_strategy) else "N/A"
+                            f"{calmar_strategy:.2f}" if not np.isinf(calmar_strategy) and not np.isnan(calmar_strategy) else "N/A"
                         ],
                         'Buy & Hold': [
                             f"{best_month_buyhold:.1f}",
                             f"{worst_month_buyhold:.1f}",
                             f"{sortino_buyhold:.2f}",
                             f"{(buyhold_monthly > 0).sum()}/{len(buyhold_monthly)}",
-                            f"{calmar_buyhold:.2f}" if not np.isinf(calmar_buyhold) else "N/A"
+                            f"{calmar_buyhold:.2f}" if not np.isinf(calmar_buyhold) and not np.isnan(calmar_buyhold) else "N/A"
                         ]
                     })
                     st.dataframe(risk_df, use_container_width=True, hide_index=True)
@@ -859,8 +864,8 @@ def main():
                     - Buy & Hold: **{sortino_buyhold:.2f}**
                     
                     **Calmar Ratio**: Annual return divided by max drawdown:
-                    - Strategy: **{calmar_strategy:.2f if not np.isinf(calmar_strategy) else 'N/A'}**
-                    - Buy & Hold: **{calmar_buyhold:.2f if not np.isinf(calmar_buyhold) else 'N/A'}**
+                    - Strategy: **{calmar_strategy:.2f if not np.isinf(calmar_strategy) and not np.isnan(calmar_strategy) else 'N/A'}**
+                    - Buy & Hold: **{calmar_buyhold:.2f if not np.isinf(calmar_buyhold) and not np.isnan(calmar_buyhold) else 'N/A'}**
                     """)
                 
                 # **3. Detailed Trading Statistics**
