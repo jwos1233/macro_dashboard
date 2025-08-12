@@ -1005,6 +1005,10 @@ def main():
                 with col2:
                     st.markdown("**Trading Efficiency**")
                     profit_factor = abs(avg_positive_return/avg_negative_return) if avg_negative_return != 0 else float('inf')
+                    
+                    # Format profit factor safely
+                    profit_factor_str = f"{profit_factor:.2f}" if not np.isinf(profit_factor) else "Excellent"
+                    
                     st.markdown(f"""
                     **Position Statistics**:
                     - **Position Changes**: {position_changes} switches over {total_positions} days
@@ -1012,7 +1016,7 @@ def main():
                     - **Time in Market**: {performance_data['time_in_market']:.1f}% (vs 100% for Buy & Hold)
                     
                     **Win/Loss Analysis**:
-                    - **Profit Factor**: {profit_factor:.2f if not np.isinf(profit_factor) else 'Excellent'} (avg win / avg loss)
+                    - **Profit Factor**: {profit_factor_str} (avg win / avg loss)
                     - **Win Rate**: {positive_long_days/(positive_long_days + negative_long_days)*100:.1f}% on active days
                     """)
                 
