@@ -181,27 +181,35 @@ class AxeListGenerator:
         })
         
         self.config = {
-            'api_delay': 0.3, 'max_retries': 3, 'default_top_n': 50, 'progress_interval': 10
+            'api_delay': 1.0,            # Increased delay to avoid rate limits
+            'max_retries': 2,            # Reduced retries to avoid hitting limits
+            'default_top_n': 50,         # Reduced default to avoid rate limits
+            'progress_interval': 5       # More frequent progress updates
         }
         if config:
             self.config.update(config)
     
     def get_top_tokens_by_market_cap(self, limit: int = 50) -> pd.DataFrame:
+        # Use a smaller limit to avoid rate limits
+        actual_limit = min(limit, 50)
+        
         try:
+            st.info(f"📊 Fetching top {actual_limit} tokens (reduced to avoid rate limits)...")
+            
             url = f"{self.coingecko_url}/coins/markets"
             params = {
-                'vs_currency': 'usd', 'order': 'market_cap_desc', 'per_page': limit,
+                'vs_currency': 'usd', 'order': 'market_cap_desc', 'per_page': actual_limit,
                 'page': 1, 'sparkline': False, 'locale': 'en'
             }
             
-            response = self.session.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=15)
             response.raise_for_status()
-            time.sleep(self.config['api_delay'])
+            time.sleep(self.config['api_delay'])  # Longer delay
             
             data = response.json()
             if not data:
                 st.error("No data returned from CoinGecko")
-                return pd.DataFrame()
+                return self._get_fallback_tokens()
             
             df = pd.DataFrame(data)
             df = df[['id', 'symbol', 'name', 'market_cap', 'market_cap_rank', 'current_price']].copy()
@@ -209,14 +217,49 @@ class AxeListGenerator:
             df['current_price'] = pd.to_numeric(df['current_price'], errors='coerce')
             df['market_cap_rank'] = pd.to_numeric(df['market_cap_rank'], errors='coerce')
             df = df.dropna(subset=['market_cap', 'current_price', 'market_cap_rank'])
-            df = df.sort_values('market_cap_rank').head(limit)
+            df = df.sort_values('market_cap_rank').head(actual_limit)
             df['binance_symbol'] = df['symbol'].str.upper() + 'USDT'
             
+            st.success(f"✅ Successfully fetched {len(df)} tokens from CoinGecko")
             return df
             
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                st.error("🚫 CoinGecko rate limit hit. Using fallback token list...")
+                return self._get_fallback_tokens()
+            else:
+                st.error(f"❌ CoinGecko error: {e}")
+                return self._get_fallback_tokens()
         except Exception as e:
-            st.error(f"Error fetching from CoinGecko: {e}")
-            return pd.DataFrame()
+            st.error(f"❌ Error fetching from CoinGecko: {e}")
+            return self._get_fallback_tokens()
+    
+    def _get_fallback_tokens(self) -> pd.DataFrame:
+        """Fallback token list when APIs fail"""
+        st.info("📋 Using hardcoded top crypto tokens as fallback...")
+        
+        fallback_data = [
+            {'id': 'bitcoin', 'symbol': 'btc', 'name': 'Bitcoin', 'market_cap': 2000000000000, 'market_cap_rank': 1, 'current_price': 100000},
+            {'id': 'ethereum', 'symbol': 'eth', 'name': 'Ethereum', 'market_cap': 400000000000, 'market_cap_rank': 2, 'current_price': 4000},
+            {'id': 'binancecoin', 'symbol': 'bnb', 'name': 'BNB', 'market_cap': 100000000000, 'market_cap_rank': 3, 'current_price': 600},
+            {'id': 'solana', 'symbol': 'sol', 'name': 'Solana', 'market_cap': 80000000000, 'market_cap_rank': 4, 'current_price': 200},
+            {'id': 'ripple', 'symbol': 'xrp', 'name': 'XRP', 'market_cap': 70000000000, 'market_cap_rank': 5, 'current_price': 1.2},
+            {'id': 'cardano', 'symbol': 'ada', 'name': 'Cardano', 'market_cap': 20000000000, 'market_cap_rank': 6, 'current_price': 0.5},
+            {'id': 'avalanche-2', 'symbol': 'avax', 'name': 'Avalanche', 'market_cap': 15000000000, 'market_cap_rank': 7, 'current_price': 40},
+            {'id': 'polkadot', 'symbol': 'dot', 'name': 'Polkadot', 'market_cap': 12000000000, 'market_cap_rank': 8, 'current_price': 8},
+            {'id': 'chainlink', 'symbol': 'link', 'name': 'Chainlink', 'market_cap': 11000000000, 'market_cap_rank': 9, 'current_price': 20},
+            {'id': 'matic-network', 'symbol': 'matic', 'name': 'Polygon', 'market_cap': 10000000000, 'market_cap_rank': 10, 'current_price': 1.1},
+            {'id': 'uniswap', 'symbol': 'uni', 'name': 'Uniswap', 'market_cap': 9000000000, 'market_cap_rank': 11, 'current_price': 12},
+            {'id': 'litecoin', 'symbol': 'ltc', 'name': 'Litecoin', 'market_cap': 8000000000, 'market_cap_rank': 12, 'current_price': 100},
+            {'id': 'near', 'symbol': 'near', 'name': 'NEAR Protocol', 'market_cap': 7000000000, 'market_cap_rank': 13, 'current_price': 7},
+            {'id': 'algorand', 'symbol': 'algo', 'name': 'Algorand', 'market_cap': 6000000000, 'market_cap_rank': 14, 'current_price': 0.8},
+            {'id': 'cosmos', 'symbol': 'atom', 'name': 'Cosmos Hub', 'market_cap': 5000000000, 'market_cap_rank': 15, 'current_price': 15}
+        ]
+        
+        df = pd.DataFrame(fallback_data)
+        df['binance_symbol'] = df['symbol'].str.upper() + 'USDT'
+        
+        return df
     
     def validate_binance_symbols(self, tokens_df: pd.DataFrame) -> pd.DataFrame:
         try:
@@ -554,11 +597,14 @@ class AxeListGenerator:
         else:
             return pd.DataFrame()
     
-    def run_analysis(self, top_n=50):
+    def run_analysis(self, top_n=30):  # Reduced default
         baseline = self.determine_baseline_asset()
         
-        st.info(f"📊 **Fetching top {top_n} tokens by market cap...**")
-        top_tokens = self.get_top_tokens_by_market_cap(top_n)
+        # Use smaller number to avoid rate limits
+        actual_n = min(top_n, 30)
+        st.info(f"📊 **Analyzing top {actual_n} tokens** (reduced to avoid API limits)")
+        
+        top_tokens = self.get_top_tokens_by_market_cap(actual_n)
         if top_tokens.empty:
             st.error("❌ Failed to fetch top tokens")
             return None
@@ -624,7 +670,7 @@ def main():
     # Settings
     st.sidebar.markdown("### ⚙️ Settings")
     lookback_days = st.sidebar.slider("Momentum Lookback (days)", 14, 50, 21)
-    top_n_tokens = st.sidebar.slider("Top N Tokens for Axe List", 20, 100, 30)
+    top_n_tokens = st.sidebar.slider("Top N Tokens for Axe List", 10, 30, 15)  # Reduced max to avoid rate limits
 
     # Data loading function (removed caching to fix serialization error)
     def load_quadrant_data(lookback_days):
