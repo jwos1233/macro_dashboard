@@ -607,6 +607,8 @@ def main():
                 - Green: Q1 (Goldilocks) & Q3 (Stagflation)
                 - Blue: Q2 (Reflation) & Q4 (Deflation)
                 """)
+                
+                # NEW ENHANCED STRATEGY ANALYSIS SECTION
             
             # 90-day table
             st.subheader("Last 90 Days Detailed View")
@@ -719,8 +721,6 @@ def main():
                 - **Strategy Logic**: Long during Q1/Q3 quadrants AND above 50 EMA, flat otherwise
                 - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
                 """)
-                
-                # NEW ENHANCED STRATEGY ANALYSIS SECTION
                 st.subheader("Enhanced Strategy Analysis")
                 
                 # Calculate monthly and yearly returns
@@ -921,7 +921,7 @@ def main():
                     st.dataframe(returns_df, use_container_width=True, hide_index=True)
                 
                 # **4. Monthly Heatmap**
-                if len(strategy_monthly) > 12:  # Only show if we have enough data
+                if len(strategy_monthly) > 6:  # Show if we have at least 6 months of data
                     st.markdown("### 4. Monthly Performance Heatmap")
                     
                     # Prepare data for heatmap
