@@ -1128,12 +1128,32 @@ def main():
                 current_quad_days = (last_30_days['Primary_Quadrant'] == current_quadrant).sum()
                 st.metric("Days in Current Quad", f"{current_quad_days}/30")
             
-            # Get all periods where we were in the current quadrant
-            current_quad_mask = daily_results['Primary_Quadrant'] == current_quadrant
-            current_quad_dates = daily_results[current_quad_mask].index
+            # APPLY SAME LAG LOGIC AS STRATEGY TO AVOID LOOK-AHEAD BIAS
+            # Create lagged quadrant signals (shift by 1 day)
+            aligned_quadrants = pd.Series('Q2', index=price_data.index)
+            for date in daily_results.index:
+                if date in aligned_quadrants.index:
+                    aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
+            
+            # Apply 1-day lag - we only know quadrant AFTER market close
+            lagged_quadrants = aligned_quadrants.shift(1).fillna('Q2')
+            
+            # APPLY SAME LAG LOGIC AS STRATEGY TO AVOID LOOK-AHEAD BIAS  
+            # Create lagged quadrant signals (shift by 1 day)
+            aligned_quadrants = pd.Series('Q2', index=price_data.index)
+            for date in daily_results.index:
+                if date in aligned_quadrants.index:
+                    aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
+            
+            # Apply 1-day lag - we only know quadrant AFTER market close
+            lagged_quadrants = aligned_quadrants.shift(1).fillna('Q2')
+            
+            # Get all periods where lagged quadrant was the current quadrant
+            current_quad_mask = lagged_quadrants == current_quadrant
+            current_quad_dates = lagged_quadrants[current_quad_mask].index
             
             if len(current_quad_dates) > 0:
-                st.info(f"Analyzing asset performance during {len(current_quad_dates)} days in {current_quadrant} regime")
+                st.info(f"Analyzing asset performance during {len(current_quad_dates)} days in {current_quadrant} regime (with 1-day lag applied)")
                 
                 # Calculate performance for each asset during current quadrant periods
                 asset_performance = []
@@ -1147,14 +1167,15 @@ def main():
                         
                         for date in current_quad_dates:
                             if date in asset_data.index:
-                                # Get 1-day forward return (to avoid look-ahead bias)
+                                # Get same-day return (since we're already using lagged signals)
                                 current_price = asset_data.loc[date]
-                                next_date_idx = asset_data.index.get_loc(date) + 1
                                 
-                                if next_date_idx < len(asset_data):
-                                    next_price = asset_data.iloc[next_date_idx]
-                                    if pd.notna(current_price) and pd.notna(next_price) and current_price > 0:
-                                        daily_return = (next_price / current_price - 1) * 100
+                                # For same-day return, we need previous day's price
+                                prev_date_idx = asset_data.index.get_loc(date) - 1
+                                if prev_date_idx >= 0:
+                                    prev_price = asset_data.iloc[prev_date_idx]
+                                    if pd.notna(current_price) and pd.notna(prev_price) and prev_price > 0:
+                                        daily_return = (current_price / prev_price - 1) * 100
                                         quad_periods_returns.append(daily_return)
                         
                         if len(quad_periods_returns) >= 5:  # Need at least 5 observations
@@ -1578,12 +1599,22 @@ def main():
                         
                         st.plotly_chart(fig_mini, use_container_width=True)
             
-            # Asset performance section
+            # Asset performance section with proper lag implementation
             st.subheader("🎯 Current Quadrant Asset Rankings")
             
-            # Get all periods where we were in the current quadrant
-            current_quad_mask = daily_results['Primary_Quadrant'] == current_quadrant
-            current_quad_dates = daily_results[current_quad_mask].index
+            # APPLY SAME LAG LOGIC AS STRATEGY TO AVOID LOOK-AHEAD BIAS
+            # Create lagged quadrant signals (shift by 1 day)
+            aligned_quadrants = pd.Series('Q2', index=price_data.index)
+            for date in daily_results.index:
+                if date in aligned_quadrants.index:
+                    aligned_quadrants[date] = daily_results.loc[date, 'Primary_Quadrant']
+            
+            # Apply 1-day lag - we only know quadrant AFTER market close
+            lagged_quadrants = aligned_quadrants.shift(1).fillna('Q2')
+            
+            # Get all periods where lagged quadrant was the current quadrant
+            current_quad_mask = lagged_quadrants == current_quadrant
+            current_quad_dates = lagged_quadrants[current_quad_mask].index
             
             if len(current_quad_dates) > 0:
                 # Calculate performance for each asset during current quadrant periods
@@ -1598,14 +1629,15 @@ def main():
                         
                         for date in current_quad_dates:
                             if date in asset_data.index:
-                                # Get 1-day forward return (to avoid look-ahead bias)
+                                # Get same-day return (since we're already using lagged signals)
                                 current_price = asset_data.loc[date]
-                                next_date_idx = asset_data.index.get_loc(date) + 1
                                 
-                                if next_date_idx < len(asset_data):
-                                    next_price = asset_data.iloc[next_date_idx]
-                                    if pd.notna(current_price) and pd.notna(next_price) and current_price > 0:
-                                        daily_return = (next_price / current_price - 1) * 100
+                                # For same-day return, we need previous day's price
+                                prev_date_idx = asset_data.index.get_loc(date) - 1
+                                if prev_date_idx >= 0:
+                                    prev_price = asset_data.iloc[prev_date_idx]
+                                    if pd.notna(current_price) and pd.notna(prev_price) and prev_price > 0:
+                                        daily_return = (current_price / prev_price - 1) * 100
                                         quad_periods_returns.append(daily_return)
                         
                         if len(quad_periods_returns) >= 5:  # Need at least 5 observations
