@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Crypto Macro Flow Dashboard - Updated with WoW quadrant analysis
-Live dashboard with quadrant analysis, strategy performance, and week-over-week momentum tracking
+Crypto Macro Flow Dashboard - Updated with 90-day view and color-coded BTC chart
+Live dashboard with quadrant analysis and strategy performance analysis
 """
 
 import streamlit as st
@@ -166,60 +166,6 @@ class CurrentQuadrantAnalysis:
             results[f'{quad}_Score'] = results[f'{quad}_Normalized']
         
         return results
-    
-    def calculate_quadrant_wow_changes(self, quadrant_scores: pd.DataFrame) -> pd.DataFrame:
-        """Calculate week-over-week changes in quadrant scores"""
-        
-        # Get the last 14 days to calculate WoW change (7 days current vs 7 days prior)
-        recent_scores = quadrant_scores.tail(14)
-        
-        if len(recent_scores) < 14:
-            # If we don't have enough data, use available data
-            if len(recent_scores) < 7:
-                return pd.DataFrame()  # Not enough data
-            
-            # Use what we have - split in half
-            mid_point = len(recent_scores) // 2
-            current_week = recent_scores.iloc[mid_point:]
-            prior_week = recent_scores.iloc[:mid_point]
-        else:
-            # Standard case: last 7 days vs prior 7 days
-            current_week = recent_scores.tail(7)
-            prior_week = recent_scores.iloc[-14:-7]
-        
-        wow_changes = []
-        
-        for quad in ['Q1', 'Q2', 'Q3', 'Q4']:
-            score_col = f'{quad}_Score'
-            
-            # Calculate average scores for current and prior weeks
-            current_avg = current_week[score_col].mean()
-            prior_avg = prior_week[score_col].mean()
-            
-            # Calculate WoW change
-            if prior_avg != 0:
-                wow_change = ((current_avg - prior_avg) / abs(prior_avg)) * 100
-            else:
-                wow_change = 0 if current_avg == 0 else 100
-            
-            # Calculate absolute change for additional context
-            absolute_change = current_avg - prior_avg
-            
-            wow_changes.append({
-                'Quadrant': quad,
-                'Description': self.quadrant_descriptions[quad],
-                'Current_Avg': current_avg,
-                'Prior_Avg': prior_avg,
-                'WoW_Change_Pct': wow_change,
-                'Absolute_Change': absolute_change,
-                'Trend': 'Gaining' if wow_change > 1 else 'Losing' if wow_change < -1 else 'Stable'
-            })
-        
-        # Convert to DataFrame and sort by absolute WoW change (descending)
-        wow_df = pd.DataFrame(wow_changes)
-        wow_df = wow_df.sort_values('WoW_Change_Pct', ascending=False)
-        
-        return wow_df
 
 # ================================================================================================
 # AXE LIST GENERATOR MODULE
@@ -260,7 +206,7 @@ class AxeListGenerator:
                 
                 data = response.json()
                 if not data:
-                    st.error("No data returned from CoinGecko")
+                    st.error("❌ No data returned from CoinGecko")
                     return pd.DataFrame()
                 
                 df = pd.DataFrame(data)
@@ -272,30 +218,30 @@ class AxeListGenerator:
                 df = df.sort_values('market_cap_rank').head(limit)
                 df['binance_symbol'] = df['symbol'].str.upper() + 'USDT'
                 
-                st.success(f"Fetched top {len(df)} tokens by market cap from CoinGecko")
+                st.success(f"✅ Fetched top {len(df)} tokens by market cap from CoinGecko")
                 return df
                 
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 429:
                     if attempt < max_retries - 1:
                         wait_time = (self.config['retry_backoff_base'] ** attempt) * 5
-                        st.warning(f"CoinGecko rate limited, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                        st.warning(f"⚠️ CoinGecko rate limited, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
                         time.sleep(wait_time)
                         continue
                     else:
-                        st.error(f"CoinGecko rate limited after {max_retries} attempts")
+                        st.error(f"❌ CoinGecko rate limited after {max_retries} attempts")
                         return pd.DataFrame()
                 else:
-                    st.error(f"HTTP error when fetching from CoinGecko: {e}")
+                    st.error(f"❌ HTTP error when fetching from CoinGecko: {e}")
                     return pd.DataFrame()
             except Exception as e:
-                st.error(f"Error fetching from CoinGecko: {e}")
+                st.error(f"❌ Error fetching from CoinGecko: {e}")
                 return pd.DataFrame()
         
         return pd.DataFrame()
     
     def validate_binance_symbols(self, tokens_df: pd.DataFrame) -> pd.DataFrame:
-        st.info(f"Validating Binance symbols for {len(tokens_df)} tokens...")
+        st.info(f"🔍 Validating Binance symbols for {len(tokens_df)} tokens...")
         
         try:
             url = f"{self.binance_url}/exchangeInfo"
@@ -333,11 +279,11 @@ class AxeListGenerator:
                             break
             
             result_df = pd.DataFrame(valid_tokens)
-            st.success(f"{len(result_df)} tokens have valid Binance symbols")
+            st.success(f"✅ {len(result_df)} tokens have valid Binance symbols")
             return result_df
             
         except Exception as e:
-            st.warning(f"Error validating Binance symbols: {e}, using all tokens")
+            st.warning(f"⚠️ Error validating Binance symbols: {e}, using all tokens")
             return tokens_df
     
     def get_coin_data(self, symbol: str, days: int = 100, max_retries: Optional[int] = None) -> Optional[pd.DataFrame]:
@@ -430,14 +376,14 @@ class AxeListGenerator:
     
     def determine_baseline_asset(self) -> str:
         try:
-            st.info("Analyzing BTCETH pair performance...")
+            st.info("🔍 Analyzing BTCETH pair performance...")
             
             btc_data = self.get_coin_data('BTCUSDT', days=100)
             time.sleep(0.2)
             eth_data = self.get_coin_data('ETHUSDT', days=100)
             
             if btc_data is None or eth_data is None:
-                st.warning("Failed to fetch BTC or ETH data, defaulting to BTC baseline")
+                st.warning("❌ Failed to fetch BTC or ETH data, defaulting to BTC baseline")
                 return 'BTC'
             
             btceth_ratio = btc_data['price'] / eth_data['price']
@@ -448,16 +394,16 @@ class AxeListGenerator:
             btc_outperforming = current_ratio > current_ma_50
             
             if btc_outperforming:
-                st.success("Baseline Asset: BTC (outperforming ETH)")
+                st.success("🎯 Baseline Asset: BTC (outperforming ETH)")
                 self.last_baseline = 'BTC'
                 return 'BTC'
             else:
-                st.success("Baseline Asset: ETH (outperforming BTC)")
+                st.success("🎯 Baseline Asset: ETH (outperforming BTC)")
                 self.last_baseline = 'ETH'
                 return 'ETH'
                 
         except Exception as e:
-            st.error(f"Error determining baseline asset: {e}")
+            st.error(f"❌ Error determining baseline asset: {e}")
             return 'BTC'
     
     def calculate_ratio_ma_ranking(self, token_symbol: str, baseline_symbol: str) -> Optional[Dict]:
@@ -557,7 +503,7 @@ class AxeListGenerator:
             return None
     
     def generate_axe_list(self, top_tokens: pd.DataFrame, baseline_asset: str) -> pd.DataFrame:
-        st.info(f"Generating axe list based on {baseline_asset} baseline...")
+        st.info(f"🔍 Generating axe list based on {baseline_asset} baseline...")
         
         baseline_symbol = 'BTCUSDT' if baseline_asset == 'BTC' else 'ETHUSDT'
         analysis_results = []
@@ -606,7 +552,7 @@ class AxeListGenerator:
         progress_bar.empty()
         status_text.empty()
         
-        st.info(f"Analysis Complete: {successful_analyses} successful, {failed_analyses} failed, {skipped_analyses} skipped")
+        st.info(f"📊 Analysis Complete: ✅ {successful_analyses} successful, ❌ {failed_analyses} failed, ⏭️ {skipped_analyses} skipped")
         
         if analysis_results:
             df = pd.DataFrame(analysis_results)
@@ -626,42 +572,42 @@ class AxeListGenerator:
             
             df = df.sort_values(['ratio_strength_score', 'axe_score'], ascending=[False, False])
             
-            st.success(f"Generated axe list with {len(df)} tokens")
+            st.success(f"🎯 Generated axe list with {len(df)} tokens")
             return df
         else:
-            st.error("No successful analyses to generate axe list")
+            st.error("❌ No successful analyses to generate axe list")
             return pd.DataFrame()
     
     def run_analysis(self, top_n=None):
         if top_n is None:
             top_n = self.config.get('default_top_n', 100)
         
-        st.info(f"Starting Axe List Analysis for top {top_n} tokens...")
+        st.info(f"🚀 Starting Axe List Analysis for top {top_n} tokens...")
         
         baseline = self.determine_baseline_asset()
         if not baseline:
-            st.error("Failed to determine baseline asset")
+            st.error("❌ Failed to determine baseline asset")
             return None
         
-        st.info("Fetching top tokens by market cap from CoinGecko...")
+        st.info("🔍 Fetching top tokens by market cap from CoinGecko...")
         top_tokens = self.get_top_tokens_by_market_cap(top_n)
         if top_tokens.empty:
-            st.error("Failed to fetch top tokens")
+            st.error("❌ Failed to fetch top tokens")
             return None
         
-        st.success(f"Found {len(top_tokens)} tokens to analyze")
+        st.success(f"✅ Found {len(top_tokens)} tokens to analyze")
         
         validated_tokens = self.validate_binance_symbols(top_tokens)
         if validated_tokens.empty:
-            st.error("No valid Binance symbols found")
+            st.error("❌ No valid Binance symbols found")
             return None
         
         axe_list = self.generate_axe_list(validated_tokens, baseline)
         if axe_list.empty:
-            st.error("Failed to generate axe list")
+            st.error("❌ Failed to generate axe list")
             return None
         
-        st.success(f"Analysis Complete! Successfully analyzed: {len(axe_list)} tokens")
+        st.success(f"🎯 Analysis Complete! Successfully analyzed: {len(axe_list)} tokens")
         return axe_list
 
 # ================================================================================================
@@ -897,81 +843,6 @@ class StrategyPerformanceAnalysis:
         st.plotly_chart(fig_positions, use_container_width=True)
 
 # ================================================================================================
-# WOW ANALYSIS WIDGET
-# ================================================================================================
-
-def display_quadrant_wow_widget(analyzer: CurrentQuadrantAnalysis, quadrant_scores: pd.DataFrame):
-    """Display the Quadrant WoW Changes widget"""
-    
-    st.subheader("Quadrant Momentum - Week over Week")
-    
-    wow_data = analyzer.calculate_quadrant_wow_changes(quadrant_scores)
-    
-    if wow_data.empty:
-        st.warning("Insufficient data for WoW analysis")
-        return
-    
-    # Create columns for the widget
-    cols = st.columns(4)
-    
-    for i, (_, row) in enumerate(wow_data.iterrows()):
-        with cols[i]:
-            quadrant = row['Quadrant']
-            wow_change = row['WoW_Change_Pct']
-            trend = row['Trend']
-            
-            # Color coding based on change direction
-            if wow_change > 2:
-                card_color = "#d4edda"  # Light green
-                border_color = "#28a745"  # Green
-                arrow = "↗"
-            elif wow_change < -2:
-                card_color = "#f8d7da"  # Light red
-                border_color = "#dc3545"  # Red
-                arrow = "↘"
-            else:
-                card_color = "#fff3cd"  # Light yellow
-                border_color = "#ffc107"  # Yellow
-                arrow = "→"
-            
-            st.markdown(f'''
-            <div style="
-                background-color: {card_color};
-                border: 2px solid {border_color};
-                border-radius: 8px;
-                padding: 1rem;
-                text-align: center;
-                margin: 0.25rem;
-            ">
-                <h4>{quadrant} {arrow}</h4>
-                <h3>{wow_change:+.1f}%</h3>
-                <p style="font-size: 0.85rem; margin: 0;">
-                    {trend}<br>
-                    Avg: {row['Current_Avg']:.2f}
-                </p>
-            </div>
-            ''', unsafe_allow_html=True)
-    
-    # Detailed table below the cards
-    with st.expander("Detailed WoW Analysis"):
-        display_df = wow_data[['Quadrant', 'Description', 'WoW_Change_Pct', 'Current_Avg', 'Prior_Avg', 'Trend']].copy()
-        display_df.columns = ['Quadrant', 'Description', 'WoW Change (%)', 'Current Avg', 'Prior Avg', 'Trend']
-        display_df['WoW Change (%)'] = display_df['WoW Change (%)'].round(1)
-        display_df['Current Avg'] = display_df['Current Avg'].round(2)
-        display_df['Prior Avg'] = display_df['Prior Avg'].round(2)
-        
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
-    # Interpretation guide
-    st.info("""
-    **Interpretation Guide:**
-    • **Green (↗)**: Quadrant gaining momentum (>+2% WoW)
-    • **Red (↘)**: Quadrant losing momentum (<-2% WoW)  
-    • **Yellow (→)**: Stable momentum (-2% to +2% WoW)
-    • **Ranking**: Sorted by WoW change magnitude (highest to lowest)
-    """)
-
-# ================================================================================================
 # STREAMLIT DASHBOARD
 # ================================================================================================
 
@@ -1026,17 +897,17 @@ def main():
     # Data loading function (removed caching to fix serialization error)
     def load_quadrant_data(lookback_days):
         if not YFINANCE_AVAILABLE:
-            return None, None, None, None
+            return None, None, None
             
         analyzer = CurrentQuadrantAnalysis(lookback_days=lookback_days)
         price_data = analyzer.fetch_recent_data(days_back=1095)
         if price_data.empty:
-            return None, None, None, None
+            return None, None, None
         
         momentum_data = analyzer.calculate_daily_momentum(price_data)
         quadrant_scores = analyzer.calculate_daily_quadrant_scores(momentum_data)
         daily_results = analyzer.determine_daily_quadrant(quadrant_scores)
-        return price_data, daily_results, analyzer, quadrant_scores
+        return price_data, daily_results, analyzer
 
     def create_charts(price_data, daily_results, analyzer):
         if price_data is None or 'BTC-USD' not in price_data.columns:
@@ -1154,7 +1025,7 @@ def main():
         
         # Load data
         with st.spinner("Loading quadrant analysis data..."):
-            price_data, daily_results, analyzer, quadrant_scores = load_quadrant_data(lookback_days)
+            price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
         
         if daily_results is not None:
             # Current quadrant info - changed to last 90 days
@@ -1187,11 +1058,6 @@ def main():
             
             with col4:
                 st.metric("Regime Strength", current_data['Regime_Strength'])
-            
-            # WoW Analysis Widget - NEW
-            st.markdown("---")
-            display_quadrant_wow_widget(analyzer, quadrant_scores)
-            st.markdown("---")
             
             # Charts
             col1, col2 = st.columns([2, 1])
@@ -1256,7 +1122,7 @@ def main():
         
         # Load data
         with st.spinner("Loading strategy performance data..."):
-            price_data, daily_results, analyzer, quadrant_scores = load_quadrant_data(lookback_days)
+            price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
         
         if daily_results is not None and price_data is not None:
             # Check if required crypto data is available
@@ -1315,3 +1181,617 @@ def main():
                     strategy_df = pd.DataFrame({
                         'Metric': ['Total Return (%)', 'Annualized Return (%)', 'Volatility (%)', 
                                   'Sharpe Ratio', 'Max Drawdown (%)', 'Win Rate (%)'],
+                        'Value': [f"{strategy_metrics['total_return']:.2f}",
+                                 f"{strategy_metrics['annualized_return']:.2f}",
+                                 f"{strategy_metrics['volatility']:.2f}",
+                                 f"{strategy_metrics['sharpe_ratio']:.2f}",
+                                 f"{strategy_metrics['max_drawdown']:.2f}",
+                                 f"{strategy_metrics['win_rate']:.2f}"]
+                    })
+                    st.dataframe(strategy_df, use_container_width=True, hide_index=True)
+                
+                with col2:
+                    st.subheader("Buy & Hold Metrics")
+                    buyhold_df = pd.DataFrame({
+                        'Metric': ['Total Return (%)', 'Annualized Return (%)', 'Volatility (%)', 
+                                  'Sharpe Ratio', 'Max Drawdown (%)', 'Win Rate (%)'],
+                        'Value': [f"{buyhold_metrics['total_return']:.2f}",
+                                 f"{buyhold_metrics['annualized_return']:.2f}",
+                                 f"{buyhold_metrics['volatility']:.2f}",
+                                 f"{buyhold_metrics['sharpe_ratio']:.2f}",
+                                 f"{buyhold_metrics['max_drawdown']:.2f}",
+                                 f"{buyhold_metrics['win_rate']:.2f}"]
+                    })
+                    st.dataframe(buyhold_df, use_container_width=True, hide_index=True)
+                
+                # Strategy summary
+                st.subheader("Strategy Summary")
+                
+                outperformance = strategy_metrics['total_return'] - buyhold_metrics['total_return']
+                risk_adjusted = strategy_metrics['sharpe_ratio'] - buyhold_metrics['sharpe_ratio']
+                
+                if outperformance > 0:
+                    perf_color = "POSITIVE"
+                    perf_text = "outperformed"
+                else:
+                    perf_color = "NEGATIVE"
+                    perf_text = "underperformed"
+                
+                st.markdown(f"""
+                **Strategy Analysis:**
+                - {perf_color}: The Quadrant Strategy **{perf_text}** Buy & Hold by **{outperformance:+.1f}%**
+                - **Risk-Adjusted Performance**: Sharpe ratio difference of **{risk_adjusted:+.2f}**
+                - **Market Exposure**: Only **{performance_data['time_in_market']:.1f}%** of the time ({performance_data['long_days']} days long, {performance_data['flat_days']} days flat)
+                - **Strategy Logic**: Long during Q1/Q3 quadrants AND above 50 EMA, flat otherwise
+                - **EMA Filter Impact**: Reduced exposure by **{performance_data['ema_filter_reduction']:.1f}%** vs quadrant-only strategy
+                """)
+                
+                # Enhanced Strategy Analysis Section
+                st.subheader("Enhanced Strategy Analysis")
+                
+                # Calculate monthly and yearly returns
+                strategy_returns_series = performance_data['strategy_returns']
+                buyhold_returns_series = performance_data['buyhold_returns']
+                
+                # **1. Monthly & Yearly Performance**
+                st.markdown("### 1. Monthly & Yearly Performance")
+                
+                # Monthly analysis
+                strategy_monthly = strategy_returns_series.resample('M').apply(lambda x: (1 + x).prod() - 1) * 100
+                buyhold_monthly = buyhold_returns_series.resample('M').apply(lambda x: (1 + x).prod() - 1) * 100
+                
+                # Yearly analysis
+                strategy_yearly = strategy_returns_series.resample('Y').apply(lambda x: (1 + x).prod() - 1) * 100
+                buyhold_yearly = buyhold_returns_series.resample('Y').apply(lambda x: (1 + x).prod() - 1) * 100
+                
+                # Monthly performance chart
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Monthly Returns Chart**")
+                    if PLOTLY_AVAILABLE and len(strategy_monthly) > 0:
+                        fig_monthly = go.Figure()
+                        
+                        # Create month labels for better x-axis
+                        month_labels = [f"{date.strftime('%Y-%m')}" for date in strategy_monthly.index]
+                        
+                        # Strategy bars
+                        fig_monthly.add_trace(go.Bar(
+                            x=month_labels,
+                            y=strategy_monthly.values,
+                            name='Strategy',
+                            marker_color='#00ff00',
+                            opacity=0.8
+                        ))
+                        
+                        # Buy & Hold bars  
+                        fig_monthly.add_trace(go.Bar(
+                            x=month_labels,
+                            y=buyhold_monthly.values,
+                            name='Buy & Hold',
+                            marker_color='#1f77b4',
+                            opacity=0.8
+                        ))
+                        
+                        fig_monthly.update_layout(
+                            title="Monthly Returns Comparison (%)",
+                            xaxis_title="Month",
+                            yaxis_title="Return (%)",
+                            height=400,
+                            barmode='group',  # Group bars side by side
+                            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+                            xaxis=dict(tickangle=-45)  # Rotate month labels
+                        )
+                        
+                        st.plotly_chart(fig_monthly, use_container_width=True)
+                    else:
+                        monthly_df = pd.DataFrame({
+                            'Strategy': strategy_monthly.values,
+                            'Buy & Hold': buyhold_monthly.values
+                        }, index=strategy_monthly.index)
+                        st.line_chart(monthly_df)
+                
+                with col2:
+                    st.markdown("**Yearly Returns Table**")
+                    if len(strategy_yearly) > 0:
+                        yearly_df = pd.DataFrame({
+                            'Year': strategy_yearly.index.year,
+                            'Strategy (%)': strategy_yearly.values.round(1),
+                            'Buy & Hold (%)': buyhold_yearly.values.round(1),
+                            'Outperformance (%)': (strategy_yearly.values - buyhold_yearly.values).round(1)
+                        })
+                        yearly_df = yearly_df.set_index('Year')
+                        st.dataframe(yearly_df, use_container_width=True)
+                    else:
+                        st.info("Insufficient data for yearly analysis")
+                
+                # **2. Advanced Risk Analysis**
+                st.markdown("### 2. Advanced Risk Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Risk Metrics**")
+                    
+                    # Calculate additional risk metrics
+                    strategy_returns_active = strategy_returns_series[performance_data['strategy_positions'] == 1]
+                    
+                    # Best/worst months
+                    best_month_strategy = strategy_monthly.max() if len(strategy_monthly) > 0 else 0
+                    worst_month_strategy = strategy_monthly.min() if len(strategy_monthly) > 0 else 0
+                    best_month_buyhold = buyhold_monthly.max() if len(buyhold_monthly) > 0 else 0
+                    worst_month_buyhold = buyhold_monthly.min() if len(buyhold_monthly) > 0 else 0
+                    
+                    # Calculate Sortino ratio (downside deviation)
+                    downside_returns_strategy = strategy_returns_series[strategy_returns_series < 0]
+                    downside_returns_buyhold = buyhold_returns_series[buyhold_returns_series < 0]
+                    
+                    downside_std_strategy = downside_returns_strategy.std() * np.sqrt(252) if len(downside_returns_strategy) > 0 else 0
+                    downside_std_buyhold = downside_returns_buyhold.std() * np.sqrt(252) if len(downside_returns_buyhold) > 0 else 0
+                    
+                    sortino_strategy = (strategy_metrics['annualized_return'] - 2) / (downside_std_strategy * 100) if downside_std_strategy > 0 else 0
+                    sortino_buyhold = (buyhold_metrics['annualized_return'] - 2) / (downside_std_buyhold * 100) if downside_std_buyhold > 0 else 0
+                    
+                    # Calmar ratio - safer calculation
+                    def safe_calmar_ratio(annual_return, max_drawdown):
+                        if max_drawdown == 0 or np.isnan(max_drawdown) or np.isnan(annual_return):
+                            return None
+                        return annual_return / abs(max_drawdown)
+                    
+                    calmar_strategy = safe_calmar_ratio(strategy_metrics['annualized_return'], strategy_metrics['max_drawdown'])
+                    calmar_buyhold = safe_calmar_ratio(buyhold_metrics['annualized_return'], buyhold_metrics['max_drawdown'])
+                    
+                    risk_df = pd.DataFrame({
+                        'Metric': ['Best Month (%)', 'Worst Month (%)', 'Sortino Ratio', 'Positive Months', 'Calmar Ratio'],
+                        'Strategy': [
+                            f"{best_month_strategy:.1f}",
+                            f"{worst_month_strategy:.1f}",
+                            f"{sortino_strategy:.2f}",
+                            f"{(strategy_monthly > 0).sum()}/{len(strategy_monthly)}",
+                            f"{calmar_strategy:.2f}" if calmar_strategy is not None else "N/A"
+                        ],
+                        'Buy & Hold': [
+                            f"{best_month_buyhold:.1f}",
+                            f"{worst_month_buyhold:.1f}",
+                            f"{sortino_buyhold:.2f}",
+                            f"{(buyhold_monthly > 0).sum()}/{len(buyhold_monthly)}",
+                            f"{calmar_buyhold:.2f}" if calmar_buyhold is not None else "N/A"
+                        ]
+                    })
+                    st.dataframe(risk_df, use_container_width=True, hide_index=True)
+                
+                with col2:
+                    st.markdown("**Risk Analysis Summary**")
+                    
+                    # Format values safely
+                    calmar_str_strategy = f"{calmar_strategy:.2f}" if calmar_strategy is not None else "N/A"
+                    calmar_str_buyhold = f"{calmar_buyhold:.2f}" if calmar_buyhold is not None else "N/A"
+                    
+                    st.markdown(f"""
+                    **Best Month**: Strategy peaked at **{best_month_strategy:.1f}%** vs Buy & Hold **{best_month_buyhold:.1f}%**
+                    
+                    **Worst Month**: Strategy bottomed at **{worst_month_strategy:.1f}%** vs Buy & Hold **{worst_month_buyhold:.1f}%**
+                    
+                    **Sortino Ratio**: Measures risk-adjusted returns using only downside deviation:
+                    - Strategy: **{sortino_strategy:.2f}**
+                    - Buy & Hold: **{sortino_buyhold:.2f}**
+                    
+                    **Calmar Ratio**: Annual return divided by max drawdown:
+                    - Strategy: **{calmar_str_strategy}**
+                    - Buy & Hold: **{calmar_str_buyhold}**
+                    """)
+                
+                # **3. Detailed Trading Statistics**
+                st.markdown("### 3. Detailed Trading Statistics")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Position Analysis**")
+                    
+                    # Position analysis
+                    total_positions = len(performance_data['strategy_positions'])
+                    long_positions = performance_data['strategy_positions'].sum()
+                    flat_positions = total_positions - long_positions
+                    
+                    # Calculate position changes (strategy switches)
+                    position_changes = (performance_data['strategy_positions'].diff() != 0).sum()
+                    avg_position_length = long_positions / position_changes if position_changes > 0 else 0
+                    
+                    # Strategy returns when long
+                    long_returns = strategy_returns_series[performance_data['strategy_positions'] == 1]
+                    positive_long_days = (long_returns > 0).sum() if len(long_returns) > 0 else 0
+                    negative_long_days = (long_returns < 0).sum() if len(long_returns) > 0 else 0
+                    
+                    # Average returns
+                    avg_long_return = long_returns.mean() * 100 if len(long_returns) > 0 else 0
+                    avg_positive_return = long_returns[long_returns > 0].mean() * 100 if len(long_returns[long_returns > 0]) > 0 else 0
+                    avg_negative_return = long_returns[long_returns < 0].mean() * 100 if len(long_returns[long_returns < 0]) > 0 else 0
+                    
+                    trading_df = pd.DataFrame({
+                        'Metric': ['Total Days', 'Long Days', 'Flat Days', 'Position Changes', 
+                                  'Avg Position Length', 'Positive Long Days', 'Negative Long Days'],
+                        'Value': [
+                            f"{total_positions}",
+                            f"{long_positions}",
+                            f"{flat_positions}",
+                            f"{position_changes}",
+                            f"{avg_position_length:.1f} days",
+                            f"{positive_long_days}",
+                            f"{negative_long_days}"
+                        ]
+                    })
+                    st.dataframe(trading_df, use_container_width=True, hide_index=True)
+                
+                with col2:
+                    st.markdown("**Win/Loss Analysis**")
+                    
+                    returns_df = pd.DataFrame({
+                        'Metric': ['Avg Daily Return (Long)', 'Avg Win Size', 'Avg Loss Size', 
+                                  'Win Rate (Long Days)', 'Profit Factor', 'Largest Win', 'Largest Loss'],
+                        'Value': [
+                            f"{avg_long_return:.3f}%",
+                            f"{avg_positive_return:.3f}%",
+                            f"{avg_negative_return:.3f}%",
+                            f"{positive_long_days/(positive_long_days + negative_long_days)*100:.1f}%" if (positive_long_days + negative_long_days) > 0 else "0%",
+                            f"{abs(avg_positive_return/avg_negative_return):.2f}" if avg_negative_return != 0 else "N/A",
+                            f"{long_returns.max()*100:.2f}%" if len(long_returns) > 0 else "0%",
+                            f"{long_returns.min()*100:.2f}%" if len(long_returns) > 0 else "0%"
+                        ]
+                    })
+                    st.dataframe(returns_df, use_container_width=True, hide_index=True)
+                
+                # **4. Monthly Heatmap**
+                if len(strategy_monthly) > 6:  # Show if we have at least 6 months of data
+                    st.markdown("### 4. Monthly Performance Heatmap")
+                    
+                    # Prepare data for heatmap
+                    monthly_data = pd.DataFrame({
+                        'Strategy': strategy_monthly.values,
+                        'Buy_Hold': buyhold_monthly.values,
+                        'Outperformance': strategy_monthly.values - buyhold_monthly.values
+                    }, index=strategy_monthly.index)
+                    
+                    monthly_data['Year'] = monthly_data.index.year
+                    monthly_data['Month'] = monthly_data.index.month
+                    
+                    # Create pivot table for heatmap
+                    heatmap_data = monthly_data.pivot(index='Year', columns='Month', values='Outperformance')
+                    
+                    if PLOTLY_AVAILABLE:
+                        fig_heatmap = go.Figure(data=go.Heatmap(
+                            z=heatmap_data.values,
+                            x=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            y=heatmap_data.index,
+                            colorscale='RdYlGn',
+                            zmid=0,
+                            colorbar=dict(title="Outperformance (%)")
+                        ))
+                        
+                        fig_heatmap.update_layout(
+                            title="Monthly Outperformance vs Buy & Hold (%)",
+                            xaxis_title="Month",
+                            yaxis_title="Year",
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
+                        
+                        st.markdown("""
+                        **Heatmap Legend:**
+                        - **Green**: Strategy outperformed Buy & Hold that month
+                        - **Red**: Strategy underperformed Buy & Hold that month
+                        - **Pattern Recognition**: Look for seasonal trends or performance clusters
+                        """)
+                    else:
+                        st.dataframe(heatmap_data.round(1), use_container_width=True)
+                        st.info("Install plotly for interactive heatmap visualization")
+                
+                # **5. Advanced Metrics Summary**
+                st.markdown("### 5. Advanced Metrics Summary")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Enhanced Risk Measures**")
+                    
+                    # Format values safely
+                    sortino_comparison = 'outperforms' if sortino_strategy > sortino_buyhold else 'underperforms'
+                    calmar_comparison = 'better' if calmar_strategy is not None and calmar_buyhold is not None and calmar_strategy > calmar_buyhold else 'similar'
+                    
+                    st.markdown(f"""
+                    **Sortino Ratio**: {sortino_strategy:.2f} vs {sortino_buyhold:.2f}
+                    - Better than Sharpe as it only penalizes downside volatility
+                    - Higher is better (strategy {sortino_comparison})
+                    
+                    **Calmar Ratio**: {calmar_str_strategy} vs {calmar_str_buyhold}
+                    - Measures return per unit of maximum drawdown
+                    - Strategy provides {calmar_comparison} risk-adjusted returns
+                    """)
+                
+                with col2:
+                    st.markdown("**Trading Efficiency**")
+                    profit_factor = abs(avg_positive_return/avg_negative_return) if avg_negative_return != 0 else float('inf')
+                    
+                    # Format profit factor safely
+                    profit_factor_str = f"{profit_factor:.2f}" if not np.isinf(profit_factor) else "Excellent"
+                    
+                    st.markdown(f"""
+                    **Position Statistics**:
+                    - **Position Changes**: {position_changes} switches over {total_positions} days
+                    - **Average Hold Time**: {avg_position_length:.1f} days per position
+                    - **Time in Market**: {performance_data['time_in_market']:.1f}% (vs 100% for Buy & Hold)
+                    
+                    **Win/Loss Analysis**:
+                    - **Profit Factor**: {profit_factor_str} (avg win / avg loss)
+                    - **Win Rate**: {positive_long_days/(positive_long_days + negative_long_days)*100:.1f}% on active days
+                    """)
+                
+            else:
+                st.error("Failed to calculate strategy performance.")
+        else:
+            st.error("Failed to load strategy performance data.")
+
+    else:  # Combined Dashboard
+        st.markdown('<h1 class="main-header">Combined Macro Flow Dashboard</h1>', unsafe_allow_html=True)
+        
+        # Load quadrant data
+        if YFINANCE_AVAILABLE:
+            with st.spinner("Loading quadrant analysis..."):
+                price_data, daily_results, analyzer = load_quadrant_data(lookback_days)
+        else:
+            price_data, daily_results, analyzer = None, None, None
+        
+        if daily_results is not None:
+            # Current status row - updated to use 90 days
+            current_data = daily_results.tail(90).iloc[-1]
+            current_quadrant = current_data['Primary_Quadrant']
+            
+            # Calculate strategy performance for 50/50 portfolio (live trading setup)
+            strategy_analyzer = StrategyPerformanceAnalysis()
+            performance_data = strategy_analyzer.calculate_strategy_performance(price_data, daily_results, 'PORTFOLIO', is_portfolio=True)
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                st.markdown(f'''
+                <div class="quadrant-card">
+                    <h4>Current Regime</h4>
+                    <h2>{current_quadrant}</h2>
+                    <p>{analyzer.quadrant_descriptions[current_quadrant]}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+            
+            with col2:
+                if performance_data:
+                    strategy_return = performance_data['strategy_metrics']['total_return']
+                    buyhold_return = performance_data['buyhold_metrics']['total_return']
+                    outperformance = strategy_return - buyhold_return
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>Strategy Performance</h4>
+                        <h3>{strategy_return:+.1f}%</h3>
+                        <p>Outperformance: {outperformance:+.1f}%</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>Strategy Performance</h4>
+                        <h3>Loading...</h3>
+                        <p>Calculating returns</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+            
+            with col3:
+                if performance_data:
+                    time_in_market = performance_data['time_in_market']
+                    position = "LONG" if current_quadrant in ['Q1', 'Q3'] else "FLAT"
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>Current Position</h4>
+                        <h3>{position}</h3>
+                        <p>Time in market: {time_in_market:.1f}%</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'''
+                    <div class="metric-card">
+                        <h4>Current Position</h4>
+                        <h3>Loading...</h3>
+                        <p>Analyzing position</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+            
+            # Main charts - updated to use 90 days and 50/50 portfolio
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                if price_data is not None and 'BTC-USD' in price_data.columns and 'ETH-USD' in price_data.columns:
+                    st.subheader("50/50 BTC+ETH Portfolio Price - Last 90 Days")
+                    
+                    # Create 50/50 portfolio for display
+                    btc_prices = price_data['BTC-USD'].tail(90)
+                    eth_prices = price_data['ETH-USD'].tail(90)
+                    
+                    # Normalize both to starting value and create 50/50 portfolio
+                    btc_normalized = (btc_prices / btc_prices.iloc[0] - 1) * 100
+                    eth_normalized = (eth_prices / eth_prices.iloc[0] - 1) * 100
+                    portfolio_returns = (btc_normalized + eth_normalized) / 2
+                    
+                    # Create DataFrame for chart
+                    portfolio_chart = pd.DataFrame({
+                        'Portfolio': portfolio_returns,
+                        'BTC': btc_normalized,
+                        'ETH': eth_normalized
+                    })
+                    
+                    st.line_chart(portfolio_chart)
+                else:
+                    st.info("Portfolio data loading...")
+            
+            with col2:
+                if performance_data and PLOTLY_AVAILABLE:
+                    st.subheader("Strategy vs Buy & Hold (Last 90 Days)")
+                    last_90_strategy = performance_data['strategy_metrics']['cumulative_series'].tail(90)
+                    last_90_buyhold = performance_data['buyhold_metrics']['cumulative_series'].tail(90)
+                    
+                    # Rebase to % from zero
+                    chart_data = pd.DataFrame({
+                        'Strategy': (last_90_strategy.values - last_90_strategy.iloc[0]) / last_90_strategy.iloc[0] * 100,
+                        'Buy & Hold': (last_90_buyhold.values - last_90_buyhold.iloc[0]) / last_90_buyhold.iloc[0] * 100
+                    }, index=last_90_strategy.index)
+                    
+                    st.line_chart(chart_data)
+                else:
+                    st.info("Strategy performance chart loading...")
+            
+            # Axe List Section - replacing Recent Quadrant Trend
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("🎯 Axe List - Top Performers")
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    
+                    # Show top 10 tokens with their 7-day performance
+                    top_10 = axe_data.head(10)[['name', 'symbol', 'ratio_vs_ma', 'week_return', 'month_return']]
+                    top_10.columns = ['Token', 'Symbol', 'Ratio vs MA (%)', '7d Return (%)', '30d Return (%)']
+                    
+                    # Color code the returns
+                    def color_returns(val):
+                        if pd.isna(val):
+                            return ''
+                        if val > 0:
+                            return f'🟢 +{val:.1f}%'
+                        else:
+                            return f'🔴 {val:.1f}%'
+                    
+                    top_10['7d Return (%)'] = top_10['7d Return (%)'].apply(color_returns)
+                    top_10['30d Return (%)'] = top_10['30d Return (%)'].apply(color_returns)
+                    
+                    st.dataframe(top_10, use_container_width=True, hide_index=True)
+                    
+                    # Show performance summary
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        outperforming = axe_data['token_outperforming'].sum()
+                        st.metric("Outperforming", f"{outperforming}/{len(axe_data)}")
+                    with col_b:
+                        avg_week_return = axe_data['week_return'].mean()
+                        st.metric("Avg 7d Return", f"{avg_week_return:.1f}%")
+                    with col_c:
+                        avg_month_return = axe_data['month_return'].mean()
+                        st.metric("Avg 30d Return", f"{avg_month_return:.1f}%")
+                else:
+                    st.info("Generate axe list to see top performers")
+            
+            with col2:
+                st.subheader("📊 Axe List Performance Chart")
+                if 'axe_data' in st.session_state and not st.session_state['axe_data'].empty:
+                    axe_data = st.session_state['axe_data']
+                    
+                    # Create performance comparison chart
+                    top_8 = axe_data.head(8)
+                    chart_data = pd.DataFrame({
+                        'Token': top_8['symbol'],
+                        '7d Return': top_8['week_return'],
+                        '30d Return': top_8['month_return']
+                    }).set_index('Token')
+                    
+                    st.bar_chart(chart_data)
+                    
+                    # Show current baseline asset
+                    if 'baseline_asset' in st.session_state:
+                        st.info(f"🎯 Baseline: {st.session_state['baseline_asset']}")
+                    else:
+                        st.info("🎯 Baseline: BTC/ETH (auto-detected)")
+                else:
+                    st.info("Generate axe list to see performance chart")
+            
+            # Generate/Refresh Axe List Button
+            if st.button("🚀 Generate/Refresh Axe List", type="primary"):
+                with st.spinner("Generating axe list..."):
+                    try:
+                        generator = AxeListGenerator()
+                        axe_data = generator.run_analysis(top_n_tokens)
+                        
+                        if axe_data is not None and not axe_data.empty:
+                            st.session_state['axe_data'] = axe_data
+                            # Store baseline asset for display
+                            if hasattr(generator, 'last_baseline'):
+                                st.session_state['baseline_asset'] = generator.last_baseline
+                            st.success(f"✅ Axe list updated! Found {len(axe_data)} tokens")
+                            st.experimental_rerun()
+                        else:
+                            st.error("❌ Failed to generate axe list")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+            
+            # Portfolio Strategy Stats (moved below axe list)
+            st.subheader("50/50 Portfolio Strategy Stats")
+            if performance_data:
+                key_stats = pd.DataFrame({
+                    'Metric': ['Total Return', 'Sharpe Ratio', 'Max Drawdown', 'Win Rate'],
+                    'Strategy': [f"{performance_data['strategy_metrics']['total_return']:.1f}%",
+                               f"{performance_data['strategy_metrics']['sharpe_ratio']:.2f}",
+                               f"{performance_data['strategy_metrics']['max_drawdown']:.1f}%",
+                               f"{performance_data['strategy_metrics']['win_rate']:.1f}%"],
+                    'Buy & Hold': [f"{performance_data['buyhold_metrics']['total_return']:.1f}%",
+                                 f"{performance_data['buyhold_metrics']['sharpe_ratio']:.2f}",
+                                 f"{performance_data['buyhold_metrics']['max_drawdown']:.1f}%",
+                                 f"{performance_data['buyhold_metrics']['win_rate']:.1f}%"]
+                })
+                st.dataframe(key_stats, use_container_width=True, hide_index=True)
+            else:
+                st.info("Loading strategy statistics...")
+            
+        else:
+            st.error("Failed to load dashboard data. Please refresh the page.")
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Data Sources")
+    st.sidebar.markdown("• **Quadrant Analysis**: Yahoo Finance")
+    st.sidebar.markdown("• **Axe List**: CoinGecko + Binance")
+    st.sidebar.markdown("• **Strategy Performance**: Calculated returns")
+    st.sidebar.markdown("• **Refresh Rate**: 5 minutes")
+    
+    # Status indicators
+    st.sidebar.markdown("### System Status")
+    if YFINANCE_AVAILABLE:
+        st.sidebar.markdown("• Yahoo Finance: Ready")
+    else:
+        st.sidebar.markdown("• Yahoo Finance: Missing")
+    
+    if PLOTLY_AVAILABLE:
+        st.sidebar.markdown("• Plotly Charts: Ready")
+    else:
+        st.sidebar.markdown("• Plotly Charts: Basic mode")
+    
+    # Instructions
+    with st.sidebar.expander("How to Use"):
+        st.markdown("""
+        **Quadrant Analysis:**
+        - Shows current market regime (Growth/Inflation)
+        - BTC chart colored by quadrant periods
+        - Last 90 days detailed scores
+        - Green: Q1 (Goldilocks) & Q3 (Stagflation)
+        - Blue: Q2 (Reflation) & Q4 (Deflation)
+        
+        **Strategy Performance:**
+        - Backtests quadrant-based strategy
+        - Long in Q1/Q3, flat in Q2/Q4
+        - Compares vs buy & hold
+        - Shows key performance metrics
+        
+        **Combined Dashboard:**
+        - Overview of both analyses
+        - Current position and performance
+        - Axe list with top performing tokens
+        - 7-day and 30-day performance metrics
+        """)
+
+if __name__ == "__main__":
+    main()
